@@ -10,6 +10,17 @@ namespace Kiln.App;
 /// - 启动时自动检查更新
 internal static class SystemIntegration
 {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+
+    public static void InitializeAppIdentity() => SetCurrentProcessExplicitAppUserModelID("Cetirzine.Kiln");
+    public static void CreateShortcut(McInstance instance)
+    {
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var name = string.Concat(instance.Name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+        File.WriteAllText(Path.Combine(desktop, "Kiln - " + name + ".url"),
+            "[InternetShortcut]\r\nURL=kiln://launch/" + Uri.EscapeDataString(instance.Name) + "\r\n", System.Text.Encoding.UTF8);
+    }
     private static bool _flashUnavailable;
 
     [DllImport("user32.dll")]
@@ -105,7 +116,7 @@ internal static class SystemIntegration
             LauncherSettings.Shared.LastUpdateCheck = DateTime.UtcNow;
             var release = await Updater.Check();
             if (release == null) return;
-            var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
+            var dialog = new KilnDialog
             {
                 XamlRoot = window.Content.XamlRoot,
                 Title = Localization.T($"新版本 {release.Version}", $"Update {release.Version}"),

@@ -28,11 +28,16 @@ public static class Updater
     {
         var j = Json.Parse(await Net.data(
             new[] { $"https://api.github.com/repos/{Repository}/releases/latest" }, fresh: true));
+        return ParseRelease(j, AppInfo.Version);
+    }
+
+    public static Release? ParseRelease(Json j, string currentVersion)
+    {
         var tag = j["tag_name"].String;
         if (tag == null || j["draft"].Bool == true || j["prerelease"].Bool == true) return null;
         var version = tag.StartsWith('v') ? tag[1..] : tag;
-        if (!IsNewer(version, AppInfo.Version)) return null;
-        var asset = j["assets"].Array.FirstOrDefault(a => (a["name"].String ?? "").EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+        if (!IsNewer(version, currentVersion)) return null;
+        var asset = j["assets"].Array.FirstOrDefault(a => string.Equals(a["name"].String, $"Kiln-Windows-x64-v{version}.zip", StringComparison.OrdinalIgnoreCase));
         if (asset.IsNull) return null;
         var url = asset["browser_download_url"].String;
         if (url == null) return null;
@@ -137,6 +142,10 @@ public static class Updater
                 var staged = Path.Combine(Path.GetDirectoryName(appDir)!, $".Kiln-update-{release.Version}");
                 try { Directory.Delete(staged, recursive: true); } catch { }
                 CopyDirectory(newApp, staged);
+                // Keep the installed EXE's uninstaller across ZIP-based automatic updates.
+                foreach (var file in Directory.EnumerateFiles(appDir, "unins*", SearchOption.TopDirectoryOnly))
+                    if (Path.GetExtension(file).ToLowerInvariant() is ".exe" or ".dat" or ".msg")
+                        File.Copy(file, Path.Combine(staged, Path.GetFileName(file)), overwrite: true);
                 return staged;
             }
             finally

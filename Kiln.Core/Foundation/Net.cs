@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Http;
@@ -11,7 +11,7 @@ namespace Kiln.Core;
 
 public static class Net
 {
-    public static readonly string UserAgent = $"{AppInfo.ShortName}/{AppInfo.Version}";
+    public static readonly string UserAgent = $"{AppInfo.ShortName}/{AppInfo.Version} (+https://github.com/{Updater.Repository})";
 
     /// 对应原版 URLSession：默认 20 秒超时（按请求计算）、UA、每主机 16 连接
     public static readonly HttpClient Session = CreateSession(16);
@@ -21,6 +21,8 @@ public static class Net
         {
             MaxConnectionsPerServer = maxConnectionsPerHost,
             ConnectTimeout = TimeSpan.FromSeconds(20),
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30),
             AutomaticDecompression = DecompressionMethods.All,
         });
 
@@ -79,6 +81,8 @@ public static class Net
             // “仅在官方源加载缓慢时改用镜像源”：第一个地址只给较短的超时
             firstTimeout = 8;
         }
+        for (var retry = 0; retry < 3; retry++)
+        {
         for (var i = 0; i < urls.Count; i++)
         {
             var u = urls[i];
@@ -89,11 +93,13 @@ public static class Net
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 cts.CancelAfter(TimeSpan.FromSeconds(total));
                 using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.UserAgent.ParseAdd(UserAgent);
+                req.Headers.TryAddWithoutValidation("Accept", "application/json, */*");
                 foreach (var (k, v) in headers ?? NoHeaders)
                     req.Headers.TryAddWithoutValidation(k, v);
                 using var resp = await Session.SendAsync(req, HttpCompletionOption.ResponseContentRead, cts.Token);
                 if (!resp.IsSuccessStatusCode)
-                    throw new LauncherException($"HTTP {(int)resp.StatusCode}: {u}");
+                    throw new HttpRequestException($"HTTP {(int)resp.StatusCode}: {u}", null, resp.StatusCode);
                 return await resp.Content.ReadAsByteArrayAsync(cts.Token);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -105,6 +111,10 @@ public static class Net
                 Log.log($"[Net] 请求失败 {u}：{e.Friendly()}");
                 lastError = e;
             }
+        }
+
+            if (!IsTransient(lastError) || retry == 2) break;
+            await Task.Delay(TimeSpan.FromMilliseconds(250 * (retry + 1)), ct);
         }
         throw lastError;
     }
@@ -124,6 +134,7 @@ public static class Net
         HttpRequestMessage NewRequest() // 响应处理后 HttpRequestMessage 不可复用，每次尝试重建
         {
             var req = new HttpRequestMessage(new HttpMethod(method), u);
+            req.Headers.UserAgent.ParseAdd(UserAgent);
             if (body != null) req.Content = new ByteArrayContent(body);
             req.Headers.TryAddWithoutValidation("Accept", "application/json");
             if (contentType != null && req.Content != null)
@@ -180,10 +191,12 @@ public static class Net
     /// 连接中断、超时等可以重试的网络错误
     public static bool IsTransient(Exception error) => error switch
     {
+        HttpRequestException { StatusCode: null } => true,
+        HttpRequestException { StatusCode: HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout } => true,
         HttpRequestException { InnerException: SocketException } => true,
         HttpRequestException { InnerException: TimeoutException } => true,
         // HttpClient 超时表现为未带外部令牌的 TaskCanceledException；用户主动取消不算
-        TaskCanceledException tce when !tce.CancellationToken.IsCancellationRequested => true,
+        TaskCanceledException => true,
         _ => false,
     };
 
@@ -330,6 +343,7 @@ public sealed class DownloadEngine
     {
         var handler = new SocketsHttpHandler
         {
+            AllowAutoRedirect = false,
             MaxConnectionsPerServer = 32,
             ConnectTimeout = TimeSpan.FromSeconds(30),
             AutomaticDecompression = DecompressionMethods.All,
@@ -345,9 +359,13 @@ public sealed class DownloadEngine
         var tmp = Path.Combine(Paths.Cache, "dl-" + Guid.NewGuid().ToString("N"));
         try
         {
-            using var resp = await _client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var resp = await OpenDownload(url, ct);
             if (!resp.IsSuccessStatusCode)
-                throw new LauncherException($"HTTP {(int)resp.StatusCode}: {url}");
+            {
+                if (resp.RequestMessage?.RequestUri?.Host is "edge.forgecdn.net" or "mediafilez.forgecdn.net" or "mediafiles.forgecdn.net")
+                    throw CurseForge.ServiceError((int)resp.StatusCode, true);
+                throw new HttpRequestException($"HTTP {(int)resp.StatusCode}: {url}", null, resp.StatusCode);
+            }
             await using var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true);
             await using var src = await resp.Content.ReadAsStreamAsync(ct);
             var buf = new byte[1 << 16];
@@ -369,6 +387,23 @@ public sealed class DownloadEngine
         }
         return tmp;
     }
+
+    private async Task<HttpResponseMessage> OpenDownload(Uri url, CancellationToken ct)
+    {
+        for (var redirects = 0; redirects <= 8; redirects++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            CurseForge.AuthenticateDownload(request, LauncherSettings.Shared.CurseforgeKey);
+            var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (response.StatusCode is not (HttpStatusCode.MovedPermanently or HttpStatusCode.Redirect or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)) return response;
+            var next = response.Headers.Location;
+            response.Dispose();
+            if (next == null) throw new LauncherException("Download redirect has no destination");
+            url = next.IsAbsoluteUri ? next : new Uri(url, next);
+            if (url.Scheme is not ("https" or "http")) throw new LauncherException("Unsupported download redirect");
+        }
+        throw new LauncherException("Too many download redirects");
+    }
 }
 
 public static class Downloader
@@ -377,6 +412,9 @@ public static class Downloader
     public static async Task Run(IReadOnlyList<DownloadItem> items, Job? job = null, int? threads = null,
         bool checkHash = true, CancellationToken ct = default)
     {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct, job?.Token ?? CancellationToken.None);
+        ct = cancellation.Token;
+        ct.ThrowIfCancellationRequested();
         if (threads == null) threads = LauncherSettings.Shared.DownloadThreads;
 
         // 去重
@@ -437,11 +475,14 @@ public static class Downloader
             // 第一轮：按设置的并发数下载；个别文件失败时先记下，不立即让整个任务失败
             var failed = await Pass(todoList, threads.Value, null, counter, ct);
             // 第二轮：网络拥塞（例如经过本地代理）时，降低并发、增加重试次数再试一次
+            var permanent = failed.Where(f => f.Item2 is CurseForgeException).ToList();
+            failed = failed.Where(f => f.Item2 is not CurseForgeException).ToList();
             if (failed.Count > 0)
             {
                 Log.log($"[Download] {failed.Count} 个文件下载失败，降低并发后重试");
                 failed = await Pass(failed.Select(f => f.Item1).ToList(), 4, 6, counter, ct);
             }
+            failed.AddRange(permanent);
             if (failed.Count > 0)
             {
                 var (item, error) = failed[0];
@@ -537,6 +578,7 @@ public static class Downloader
             {
                 throw;
             }
+            catch (CurseForgeException) { throw; }
             catch (Exception e)
             {
                 lastError = e;
@@ -548,3 +590,4 @@ public static class Downloader
             $"Failed to download {Path.GetFileName(item.Destination)}: {lastError.Friendly()}"));
     }
 }
+

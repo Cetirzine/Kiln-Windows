@@ -22,6 +22,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        SystemIntegration.InitializeAppIdentity();
         var window = new MainWindow();
         MainAppWindow = window;
         window.Activate();
@@ -55,34 +56,31 @@ public partial class App : Application
             var instances = InstanceScanner.Scan(LauncherSettings.Shared.MinecraftFolder);
             var inst = instances.FirstOrDefault(i => string.Equals(i.Name, version, StringComparison.OrdinalIgnoreCase));
             if (inst == null) throw new LauncherException(Localization.T($"找不到版本 {version}", $"Instance {version} wasn't found"));
-            var account = AccountStore.Shared.Selected ?? AccountStore.Shared.AccountFor(inst.Setup);
-            if (account == null) throw new LauncherException(Localization.T("请先在启动器中登录账号。", "Sign in inside Kiln first."));
             LauncherSettings.Shared.SelectedInstance = inst.Name;
             MainAppWindow!.DispatcherQueue.TryEnqueue(() => ((MainWindow)MainAppWindow).ReloadCurrentPage());
-            var job = MainWindow.NewJob(Localization.T($"启动 {inst.Name}", $"Play {inst.Name}"));
-            await Launcher.Launch(inst, account, new LaunchOptions(), job, new LaunchCallbacks
-            {
-                OnExit = g => MainAppWindow!.DispatcherQueue.TryEnqueue(() =>
-                    SystemIntegration.Notify("Kiln",
-                        g.State == GameProcess.GameState.Crashed
-                            ? Localization.T($"{inst.Name} 崩溃了，点击启动器查看。", $"{inst.Name} crashed.")
-                            : "")),
-            });
+            await LaunchCoordinator.Launch(inst, new LaunchOptions());
         }
+        catch (OperationCanceledException) { }
         catch (Exception e)
         {
             await ShowInfo(MainAppWindow!, e.Friendly());
         }
     }
 
-    private static async Task Pcl2TakeOverDialog(MainWindow window)
+    public static async Task Pcl2TakeOverDialog(MainWindow window, bool userInitiated = false)
     {
         try
         {
-            if (LauncherSettings.Shared.Pcl2TakenOver) return;
+            // Older self-tests wrote Pcl2TakenOver without ever showing the dialog.
+            // Only an explicit UI confirmation counts as having seen this prompt.
+            if (!userInitiated && LauncherSettings.Shared.Pcl2PromptConfirmed) return;
             var pcl = await Task.Run(() => Pcl2.Detect());
-            if (pcl == null) return;
-            var dialog = new ContentDialog
+            if (pcl == null)
+            {
+                if (userInitiated) await ShowInfo(window, Localization.T("未自动检测到 PCL2，请在导入中手动选择文件夹。", "PCL2 wasn't found automatically. Choose its folder in Import."));
+                return;
+            }
+            var dialog = new KilnDialog
             {
                 XamlRoot = window.Content.XamlRoot,
                 Title = "PCL2",
@@ -95,6 +93,7 @@ public partial class App : Application
             if (result == ContentDialogResult.Primary)
             {
                 var r = Pcl2.TakeOver(pcl);
+                LauncherSettings.Shared.Pcl2PromptConfirmed = true;
                 Log.log($"[PCL2] 接管完成：{string.Join("；", r.Applied)}");
                 window.ReloadCurrentPage();
                 await ShowInfo(window, Localization.T(
@@ -110,7 +109,7 @@ public partial class App : Application
 
     public static async Task ShowInfo(Window window, string message, string? title = null)
     {
-        var dialog = new ContentDialog
+        var dialog = new KilnDialog
         {
             XamlRoot = window.Content.XamlRoot,
             Title = title ?? AppInfo.ShortName,

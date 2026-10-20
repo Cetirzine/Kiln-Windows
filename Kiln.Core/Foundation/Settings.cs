@@ -19,6 +19,16 @@ public enum GCMode { G1 = 0, Zgc = 1 }
 /// 全局设置，存储在 %APPDATA%\Kiln\settings.json（键与默认值与原版 UserDefaults 一一对应）
 public sealed class LauncherSettings
 {
+    public int LauncherWindowPreset
+    {
+        get => (int)GetInt("launcherWindowPreset", 1);
+        set => Set("launcherWindowPreset", Math.Clamp(value, 0, 2));
+    }
+    public bool Pcl2PromptConfirmed
+    {
+        get => GetBool("pcl2PromptConfirmed", false);
+        set => Set("pcl2PromptConfirmed", value);
+    }
     public static readonly LauncherSettings Shared = new();
 
     private readonly object _gate = new();

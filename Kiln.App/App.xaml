@@ -1,28 +1,157 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Application
-    x:Class="Kiln.App.App"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:Kiln.App">
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Application x:Class="Kiln.App.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Application.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-            </ResourceDictionary.MergedDictionaries>
-            <x:Double x:Key="PageSpacing">12</x:Double>
-            <Style x:Key="PageTitle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="26" />
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Margin" Value="2,8,0,12" />
+            <ResourceDictionary.MergedDictionaries><XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" /></ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="KilnBackground" Color="#E8E8E6" />
+                    <SolidColorBrush x:Key="KilnSidebar" Color="#DEDEDB" />
+                    <SolidColorBrush x:Key="KilnPanel" Color="#F6F6F5" />
+                    <SolidColorBrush x:Key="KilnPanelSecondary" Color="#EDEDEB" />
+                    <SolidColorBrush x:Key="KilnHover" Color="#E3E3E0" />
+                    <SolidColorBrush x:Key="KilnStroke" Color="#D2D2CE" />
+                    <SolidColorBrush x:Key="KilnEdge" Color="#1E1E1D" />
+                    <SolidColorBrush x:Key="KilnText" Color="#1E1E1D" />
+                    <SolidColorBrush x:Key="KilnTextSecondary" Color="#62625E" />
+                    <SolidColorBrush x:Key="KilnAccent" Color="#2449CF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="KilnBackground" Color="#1B1B1A" />
+                    <SolidColorBrush x:Key="KilnSidebar" Color="#151514" />
+                    <SolidColorBrush x:Key="KilnPanel" Color="#242423" />
+                    <SolidColorBrush x:Key="KilnPanelSecondary" Color="#2C2C2A" />
+                    <SolidColorBrush x:Key="KilnHover" Color="#323230" />
+                    <SolidColorBrush x:Key="KilnStroke" Color="#3A3A37" />
+                    <SolidColorBrush x:Key="KilnEdge" Color="#55554F" />
+                    <SolidColorBrush x:Key="KilnText" Color="#ECECE9" />
+                    <SolidColorBrush x:Key="KilnTextSecondary" Color="#A2A29C" />
+                    <SolidColorBrush x:Key="KilnAccent" Color="#8FB3FF" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <Style TargetType="Page"><Setter Property="Foreground" Value="{ThemeResource KilnText}" /><Setter Property="FontSize" Value="13" /></Style>
+            <Style x:Key="KilnNavigationButton" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="VerticalAlignment" Value="Stretch" />
+                <Setter Property="Foreground" Value="{ThemeResource KilnText}" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                <ContentPresenter Content="{TemplateBinding Content}" Padding="{TemplateBinding Padding}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
-            <Style x:Key="SectionHeader" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="17" />
-                <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Margin" Value="2,18,0,8" />
+            <Style TargetType="Button">
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="MinHeight" Value="28" />
+                <Setter Property="CornerRadius" Value="2" />
+                <Setter Property="Padding" Value="12,3" />
+                <Setter Property="Foreground" Value="{ThemeResource KilnText}" />
+                <Setter Property="Background" Value="{ThemeResource KilnPanel}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource KilnEdge}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid x:Name="ButtonRoot">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="ButtonSurface.Background" Value="{ThemeResource KilnHover}" /></VisualState.Setters></VisualState>
+                                        <VisualState x:Name="Pressed"><VisualState.Setters><Setter Target="ButtonShift.X" Value="1" /><Setter Target="ButtonShift.Y" Value="1" /></VisualState.Setters></VisualState>
+                                        <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="ButtonRoot.Opacity" Value="0.45" /></VisualState.Setters></VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Border Background="#381E1E1D" CornerRadius="2" Margin="2,2,-2,-2" />
+                                <Border x:Name="ButtonSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
+                                    <Border.RenderTransform><TranslateTransform x:Name="ButtonShift" /></Border.RenderTransform>
+                                    <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" Padding="{TemplateBinding Padding}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
-            <Style x:Key="SettingRow" TargetType="Grid">
-                <Setter Property="ColumnSpacing" Value="12" />
+            <Style TargetType="ToggleSwitch">
+                <Setter Property="MinWidth" Value="36" />
+                <Setter Property="MinHeight" Value="28" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleSwitch">
+                            <Grid x:Name="SwitchRoot" Width="36" Height="28" Background="Transparent">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" /><VisualState x:Name="PointerOver" /><VisualState x:Name="Pressed" />
+                                        <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="SwitchRoot.Opacity" Value="0.45" /></VisualState.Setters></VisualState>
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="ToggleStates">
+                                        <VisualState x:Name="Off" />
+                                        <VisualState x:Name="On">
+                                            <VisualState.Setters><Setter Target="Track.Background" Value="{ThemeResource KilnAccent}" /></VisualState.Setters>
+                                            <Storyboard><DoubleAnimation Storyboard.TargetName="SwitchKnobTransform" Storyboard.TargetProperty="X" To="16" Duration="0:0:0.1" /></Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Dragging" />
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Border x:Name="Track" Height="18" CornerRadius="2" Background="{ThemeResource KilnPanelSecondary}" BorderBrush="{ThemeResource KilnEdge}" BorderThickness="1" />
+                                <Grid x:Name="SwitchKnobBounds" Height="18">
+                                    <Border x:Name="SwitchKnob" Width="12" Height="12" Margin="4,0,0,0" HorizontalAlignment="Left" Background="{ThemeResource KilnPanel}" BorderBrush="{ThemeResource KilnEdge}" BorderThickness="1" CornerRadius="1">
+                                        <Border.RenderTransform><TranslateTransform x:Name="SwitchKnobTransform" /></Border.RenderTransform>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
+            <Style TargetType="TextBox"><Setter Property="FontSize" Value="13" /><Setter Property="CornerRadius" Value="2" /><Setter Property="MinHeight" Value="28" /></Style>
+            <Style TargetType="ComboBox"><Setter Property="FontSize" Value="12.5" /><Setter Property="CornerRadius" Value="2" /><Setter Property="MinHeight" Value="28" /></Style>
+            <Style TargetType="ComboBoxItem">
+                <Setter Property="MinHeight" Value="28" /><Setter Property="Padding" Value="10,5" /><Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="ItemSurface" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" /><VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="ItemSurface.Background" Value="{ThemeResource KilnHover}" /></VisualState.Setters></VisualState>
+                            <VisualState x:Name="Selected"><VisualState.Setters><Setter Target="ItemSurface.Background" Value="{ThemeResource KilnHover}" /></VisualState.Setters></VisualState>
+                            <VisualState x:Name="SelectedPointerOver"><VisualState.Setters><Setter Target="ItemSurface.Background" Value="{ThemeResource KilnHover}" /></VisualState.Setters></VisualState>
+                        </VisualStateGroup></VisualStateManager.VisualStateGroups>
+                        <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                    </Border>
+                </ControlTemplate></Setter.Value></Setter>
+            </Style>
+            <Style TargetType="ListViewItem">
+                <Setter Property="MinHeight" Value="40" /><Setter Property="Padding" Value="10,7" /><Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListViewItem">
+                    <Border x:Name="RowSurface" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" /><VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="RowSurface.Background" Value="{ThemeResource KilnPanelSecondary}" /></VisualState.Setters></VisualState>
+                            <VisualState x:Name="Selected"><VisualState.Setters><Setter Target="RowSurface.Background" Value="{ThemeResource KilnHover}" /><Setter Target="RowSurface.BorderBrush" Value="{ThemeResource KilnAccent}" /><Setter Target="RowSurface.BorderThickness" Value="3,0,0,0" /></VisualState.Setters></VisualState>
+                            <VisualState x:Name="SelectedPointerOver"><VisualState.Setters><Setter Target="RowSurface.Background" Value="{ThemeResource KilnHover}" /><Setter Target="RowSurface.BorderBrush" Value="{ThemeResource KilnAccent}" /><Setter Target="RowSurface.BorderThickness" Value="3,0,0,0" /></VisualState.Setters></VisualState>
+                            <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="RowSurface.Opacity" Value="0.45" /></VisualState.Setters></VisualState>
+                        </VisualStateGroup></VisualStateManager.VisualStateGroups>
+                        <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                    </Border>
+                </ControlTemplate></Setter.Value></Setter>
+            </Style>
+            <Style TargetType="MenuFlyoutPresenter"><Setter Property="CornerRadius" Value="0" /><Setter Property="Background" Value="{ThemeResource KilnPanel}" /><Setter Property="BorderBrush" Value="{ThemeResource KilnEdge}" /><Setter Property="BorderThickness" Value="1.5" /><Setter Property="Padding" Value="4" /></Style>
+            <Style TargetType="MenuFlyoutItem"><Setter Property="MinHeight" Value="28" /><Setter Property="FontSize" Value="12.5" /><Setter Property="CornerRadius" Value="0" /></Style>
+            <Style TargetType="ListView"><Setter Property="Background" Value="{ThemeResource KilnPanel}" /><Setter Property="BorderBrush" Value="{ThemeResource KilnStroke}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="0" /></Style>
+            <Thickness x:Key="TextControlBorderThemeThickness">1</Thickness>
+            <Thickness x:Key="TextControlBorderThemeThicknessFocused">1</Thickness>
+            <CornerRadius x:Key="ControlCornerRadius">2</CornerRadius>
+            <CornerRadius x:Key="OverlayCornerRadius">0</CornerRadius>
+            <Style x:Key="PageTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="21" /><Setter Property="FontWeight" Value="Bold" /><Setter Property="Margin" Value="0,0,0,14" /></Style>
+            <Style x:Key="SectionHeader" TargetType="TextBlock"><Setter Property="FontSize" Value="13" /><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="Margin" Value="0,18,0,8" /></Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
+
+

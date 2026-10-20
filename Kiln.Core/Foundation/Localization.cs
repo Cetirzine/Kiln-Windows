@@ -75,6 +75,7 @@ public sealed class Localizer
 
     private static readonly (string From, string To)[] Variants =
     {
+        ("游戲", "遊戲"),
         ("啓", "啟"), ("爲", "為"), ("裏", "裡"), ("綫", "線"), ("衆", "眾"), ("僞", "偽"), ("峯", "峰"), ("脣", "唇"), ("羣", "群"),
         ("檔案夾", "資料夾"), ("文件夾", "資料夾"), ("默認", "預設"), ("設置", "設定"), ("信息", "資訊"), ("賬號", "帳號"), ("內存", "記憶體"),
         ("網絡", "網路"), ("緩存", "快取"), ("加載", "載入"), ("程序", "程式"), ("視頻", "視訊"), ("屏幕", "螢幕"), ("文件", "檔案"),
@@ -128,5 +129,7 @@ public static class AppInfo
     public const string Author = "NelsonPence";
 
     public static string Version =>
-        typeof(AppInfo).Assembly.GetName().Version?.ToString(3) is { Length: > 0 } v ? v : "0.2.10";
+        (Attribute.GetCustomAttribute(typeof(AppInfo).Assembly, typeof(System.Reflection.AssemblyInformationalVersionAttribute))
+            as System.Reflection.AssemblyInformationalVersionAttribute)?.InformationalVersion.Split('+')[0]
+        ?? typeof(AppInfo).Assembly.GetName().Version?.ToString(3) ?? "0.2.10w";
 }

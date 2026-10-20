@@ -72,9 +72,7 @@ public static class Modrinth
     /// 依赖：必需的前置，或可选的联动
     public sealed record Dependency(string ProjectId, string? VersionId, bool Required);
 
-    internal static string Encode(string v) =>
-        Uri.EscapeDataString(v).Replace("%26", "&").Replace("%3D", "=").Replace("%2B", "+")
-            .Replace("%5B", "[").Replace("%5D", "]").Replace("%22", "\"");
+    internal static string Encode(string v) => Uri.EscapeDataString(v);
 
     /// 某个加载器能使用的 Mod 类别：Quilt 可以加载大部分 Fabric Mod
     public static IReadOnlyList<string> CompatibleLoaders(string loader)
@@ -84,7 +82,7 @@ public static class Modrinth
     }
 
     public static async Task<IReadOnlyList<Project>> Search(string query, ProjectType type, string? gameVersion,
-        string? loader, int offset = 0)
+        string? loader, int offset = 0, CancellationToken ct = default)
     {
         var facets = new List<string> { $"[\"project_type:{type.Id()}\"]" };
         if (!string.IsNullOrEmpty(gameVersion)) facets.Add($"[\"versions:{gameVersion}\"]");
@@ -92,7 +90,7 @@ public static class Modrinth
         if ((type == ProjectType.Mod || type == ProjectType.Modpack) && !string.IsNullOrEmpty(loader))
             facets.Add("[" + string.Join(",", CompatibleLoaders(loader).Select(l => $"\"categories:{l}\"")) + "]");
         var url = $"{Api}/search?query={Encode(query)}&limit=30&offset={offset}&index=relevance&facets={Encode("[" + string.Join(",", facets) + "]")}";
-        var j = await Net.json(new[] { url });
+        var j = await Net.json(new[] { url }, ct);
         var result = new List<Project>();
         foreach (var h in j["hits"].Array)
         {
@@ -109,11 +107,11 @@ public static class Modrinth
     }
 
     /// 按 slug 批量获取项目（用于中文名搜索），按给定顺序返回，并按游戏版本与加载器筛选
-    public static async Task<IReadOnlyList<Project>> Projects(IReadOnlyList<string> slugs, string? gameVersion, string? loader)
+    public static async Task<IReadOnlyList<Project>> Projects(IReadOnlyList<string> slugs, string? gameVersion, string? loader, CancellationToken ct = default)
     {
         if (slugs.Count == 0) return Array.Empty<Project>();
         var ids = "[" + string.Join(",", slugs.Take(60).Select(s => $"\"{s}\"")) + "]";
-        var j = await Net.json(new[] { $"{Api}/projects?ids={Encode(ids)}" });
+        var j = await Net.json(new[] { $"{Api}/projects?ids={Encode(ids)}" }, ct);
         var allowed = loader != null ? new HashSet<string>(CompatibleLoaders(loader)) : null;
         var bySlug = new Dictionary<string, Project>();
         foreach (var p in j.Array)

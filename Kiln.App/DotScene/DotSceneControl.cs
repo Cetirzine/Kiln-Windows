@@ -35,11 +35,12 @@ public sealed class DotSceneControl : UserControl
     {
         Content = _image;
         SizeChanged += (_, _) => _cacheKey = "";
-        Loaded += (_, _) => { _timer.Tick += OnFrame; _timer.Start(); };
+        _timer.Tick += OnFrame;
+        Loaded += (_, _) => _timer.Start();
         Unloaded += (_, _) => _timer.Stop();
     }
 
-    private void OnFrame(object sender, object e)
+    private void OnFrame(object? sender, object e)
     {
         if (_scene == null || ActualWidth < 10 || ActualHeight < 10) return;
         // 每格约 4px，宽度上大约 250 个点

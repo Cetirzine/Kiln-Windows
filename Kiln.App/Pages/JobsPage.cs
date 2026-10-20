@@ -9,39 +9,67 @@ public sealed class JobsPage : Page
 {
     private readonly StackPanel _list = new() { Spacing = 10 };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private readonly Dictionary<Job, TaskRow> _rows = new();
+    private readonly TextBlock _empty = Ui.Text(Localization.T("没有正在进行的任务。", "No running tasks."));
+    private readonly Button _clear;
 
     public JobsPage()
     {
-        var panel = new StackPanel { Spacing = 12, Margin = new Thickness(0, 16, 0, 0) };
-        panel.Children.Add(Ui.Text(Localization.T("下载管理", "Downloads"), 26, FontWeights.SemiBold));
-        panel.Children.Add(_list);
-        Content = new ScrollViewer { Content = panel };
-        Loaded += (_, _) => { _timer.Tick += (_, _) => Reload(); _timer.Start(); Reload(); };
+        _clear = Ui.Button(Localization.T("清除已结束的任务", "Clear finished tasks"), (_, _) => { MainWindow.ClearFinishedJobs(); Reload(); });
+        var root = new Grid { RowSpacing = 14 };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.Children.Add(Ui.Header(Localization.T("任务", "Tasks"), _clear));
+        var scroll = new ScrollViewer { Content = Ui.Col(_empty, _list), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; Grid.SetRow(scroll, 1); root.Children.Add(scroll);
+        Content = root;
+        _timer.Tick += (_, _) => Reload();
+        Loaded += (_, _) => { _timer.Start(); Reload(); };
         Unloaded += (_, _) => _timer.Stop();
     }
 
     private void Reload()
     {
-        _list.Children.Clear();
-        foreach (var job in MainWindow.AllJobs.AsEnumerable().Reverse())
+        var jobs = MainWindow.AllJobs;
+        foreach (var old in _rows.Keys.Where(job => !jobs.Contains(job)).ToArray()) { _list.Children.Remove(_rows[old]); _rows.Remove(old); }
+        foreach (var job in jobs)
         {
-            var state = job.State switch
-            {
-                Job.JobState.Success => " ✓",
-                Job.JobState.Failed => $" ✗ {job.Error}",
-                Job.JobState.Cancelled => " ⊘",
-                _ => "",
-            };
-            var line = Ui.Col(
-                Ui.Text(job.Title + state, 14, FontWeights.SemiBold),
-                Ui.Text($"{job.Stage}  {job.FileText}  {Job.FormatSpeed(job.Speed)}", 12));
-            var progress = Ui.Progress((float)job.Fraction);
-            var box = Ui.Col(line, progress);
-            box.Margin = new Thickness(0, 6, 0, 6);
-            _list.Children.Add(box);
+            if (!_rows.TryGetValue(job, out var row)) { row = new TaskRow(job); _rows[job] = row; _list.Children.Insert(0, row); }
+            row.Refresh();
         }
-        if (MainWindow.AllJobs.Count == 0)
-            _list.Children.Add(Ui.Text(Localization.T("没有正在进行的任务。", "No running tasks."), 13));
+        _empty.Visibility = jobs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        _clear.IsEnabled = jobs.Any(job => job.State != Job.JobState.Running);
+    }
+
+    private sealed class TaskRow : UserControl
+    {
+        private readonly Job _job;
+        private readonly TextBlock _status = Ui.Text("", 11.5);
+        private readonly TextBlock _detail = Ui.Text("", 11.5);
+        private readonly TextBlock _percent = Ui.Text("", 12, FontWeights.SemiBold);
+        private readonly FontIcon _icon = new() { FontSize = 18 };
+        private readonly ProgressBar _progress = Ui.Progress();
+        private readonly Button _cancel;
+        public TaskRow(Job job)
+        {
+            _job = job;
+            var grid = new Grid { ColumnSpacing = 12 }; grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) }); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); grid.Children.Add(_icon);
+            var heading = new Grid(); heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            heading.Children.Add(Ui.Text(job.Title, 13, FontWeights.SemiBold)); Grid.SetColumn(_percent, 1); heading.Children.Add(_percent);
+            var information = new Grid { ColumnSpacing = 10 }; information.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); information.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); _status.MaxLines = 2; information.Children.Add(_status); Grid.SetColumn(_detail, 1); information.Children.Add(_detail);
+            var body = Ui.Col(heading, _progress, information); body.Spacing = 5; Grid.SetColumn(body, 1); grid.Children.Add(body);
+            _cancel = Ui.Button("×", (sender, _) => { job.Cancel(); ((Button)sender).IsEnabled = false; }); _cancel.Width = 28; _cancel.Padding = new Thickness(0); ToolTipService.SetToolTip(_cancel, Localization.T("取消", "Cancel")); Grid.SetColumn(_cancel, 2); grid.Children.Add(_cancel);
+            Content = Ui.Card("", grid);
+        }
+        public void Refresh()
+        {
+            var running = _job.State == Job.JobState.Running;
+            _icon.Glyph = _job.State switch { Job.JobState.Success => "\uE73E", Job.JobState.Failed => "\uE7BA", Job.JobState.Cancelled => "\uE711", _ => "\uE896" };
+            _icon.Foreground = Ui.Brush(running ? "KilnAccent" : "KilnTextSecondary");
+            _status.Text = _job.State switch { Job.JobState.Failed => _job.Error ?? Localization.T("失败", "Failed"), Job.JobState.Cancelled => Localization.T("已取消", "Cancelled"), Job.JobState.Success => Localization.T("已完成", "Completed"), _ => _job.Stage };
+            _status.Foreground = _detail.Foreground = Ui.Brush("KilnTextSecondary");
+            _detail.Text = running ? _job.FileText + (_job.Speed > 0 ? "  " + Job.FormatSpeed(_job.Speed) : "") : "";
+            _percent.Text = running ? $"{_job.Fraction:P0}" : "";
+            _progress.Value = _job.Fraction; _progress.Visibility = _cancel.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 }
 
@@ -73,7 +101,7 @@ public sealed class AboutPage : Page
                 return;
             }
             LauncherSettings.Shared.LastUpdateCheck = DateTime.UtcNow;
-            var dialog = new ContentDialog
+            var dialog = new KilnDialog
             {
                 XamlRoot = XamlRoot,
                 Title = Localization.T($"新版本 {release.Version}", $"Update {release.Version}"),

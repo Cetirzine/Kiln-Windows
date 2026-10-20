@@ -13,6 +13,9 @@ public sealed class GameProcess
     public string InstanceName { get; }
     private readonly object _gate = new();
     private readonly List<string> _lines = new();
+    private long _lineRevision;
+    private long _totalLines;
+    public long LineRevision { get { lock (_gate) return _lineRevision; } }
     public event Action<GameProcess.GameState>? StateChanged;
     private GameProcess.GameState _state = GameProcess.GameState.Starting;
     public GameState State
@@ -37,13 +40,19 @@ public sealed class GameProcess
 
     public GameProcess(string instanceName) => InstanceName = instanceName;
 
-    public IReadOnlyList<string> Lines { get { lock (_gate) return _lines; } }
+    public IReadOnlyList<string> Lines { get { lock (_gate) return _lines.ToArray(); } }
+    public (long Revision, long TotalLines, IReadOnlyList<string> Lines) LogSnapshot()
+    {
+        lock (_gate) return (_lineRevision, _totalLines, _lines.ToArray());
+    }
 
     public void Append(string text)
     {
         lock (_gate)
         {
-            _lines.AddRange(_parser.Feed(text));
+            var added = _parser.Feed(text).ToArray();
+            if (added.Length == 0) return;
+            _lines.AddRange(added); _lineRevision++; _totalLines += added.Length;
             if (_lines.Count > 5000) _lines.RemoveRange(0, _lines.Count - 5000);
         }
     }
@@ -504,19 +513,19 @@ public static class Launcher
     private static GameProcess GameProcessFactory(McInstance instance, JavaInfo java, IReadOnlyList<string> args,
         LoginResult login, LaunchCallbacks callbacks)
     {
-        var game = new GameProcess(instance.Name);
+        var game = new GameProcess(instance.Name) { Instance = instance, Java = java, Secret = login.UserType == "legacy" ? null : login.AccessToken };
         var info = new ProcessStartInfo
         {
             FileName = java.Path,
-            Arguments = string.Join(" ", args.Select(a => a.Contains(' ') ? "\"" + a + "\"" : a)),
             WorkingDirectory = instance.GameDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        foreach (var argument in args) info.ArgumentList.Add(argument);
         try { Directory.CreateDirectory(instance.GameDir); } catch { }
-        var logUrl = Path.Combine(Paths.Logs, "LatestLaunch.log");
+        var logUrl = Path.Combine(Paths.Logs, $"Launch-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{game.Id:N}.log");
         try { File.WriteAllText(logUrl, ""); } catch { }
         game.LogFilePath = logUrl;
         var redactToken = login.UserType == "legacy" ? null : login.AccessToken;
@@ -536,11 +545,6 @@ public static class Launcher
         }
         p.OutputDataReceived += (_, e) => { if (e.Data != null) HandleText(e.Data + "\n"); };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) HandleText(e.Data + "\n"); };
-        p.Start();
-        // 高优先级：对应原版的高 QoS 调度
-        try { p.PriorityClass = ProcessPriorityClass.High; } catch { }
-        p.BeginOutputReadLine();
-        p.BeginErrorReadLine();
         game.Process = p;
         p.Exited += (_, _) =>
         {
@@ -554,6 +558,9 @@ public static class Launcher
             AddPlayTime(game, instance);
             callbacks.OnExit(game);
         };
+        p.Start();
+        p.BeginOutputReadLine();
+        p.BeginErrorReadLine();
         // 部分版本没有可识别的日志，20 秒后视为已启动
         _ = Task.Run(async () =>
         {

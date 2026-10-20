@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <Version>0.2.10</Version>
+    <InformationalVersion>0.2.10w</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <NoWarn>$(NoWarn);NU1701</NoWarn>
   </PropertyGroup>
 

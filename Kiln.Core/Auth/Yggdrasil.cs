@@ -169,7 +169,7 @@ public static class AuthlibInjector
             }
             try { File.WriteAllBytes(stamp, Array.Empty<byte>()); } catch { }
         }
-        catch (Exception e)
+        catch
         {
             // 网络不可用时继续使用已有的版本
             if (File.Exists(Jar)) return Jar;

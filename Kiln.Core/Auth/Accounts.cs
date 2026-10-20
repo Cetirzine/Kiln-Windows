@@ -5,6 +5,7 @@ namespace Kiln.Core;
 
 public sealed class Account
 {
+    [JsonConverter(typeof(AccountKindConverter))]
     public enum AccountKind { Offline, Microsoft, Yggdrasil }
 
     [JsonPropertyName("kind")] public AccountKind Kind { get; set; }
@@ -415,8 +416,6 @@ public sealed class AccountStore
             }
             default:
             {
-                DateTime expires;
-                string cachedToken;
                 string refresh;
                 lock (_gate)
                 {
@@ -428,8 +427,6 @@ public sealed class AccountStore
                     refresh = TokenStore.Get(acc.Uuid)
                         ?? throw Fail(acc, T.Invoke("正版登录已过期，请重新登录。",
                             "Your Microsoft login expired. Please sign in again."));
-                    expires = default;
-                    cachedToken = "";
                 }
                 MicrosoftAuth.Result r;
                 try
@@ -500,13 +497,13 @@ public static class MicrosoftAuth
     }
 
     /// 轮询，直到用户在浏览器中完成登录
-    public static async Task<(string Access, string Refresh)> Poll(DeviceCode dc)
+    public static async Task<(string Access, string Refresh)> Poll(DeviceCode dc, CancellationToken ct = default)
     {
         var interval = Math.Max(dc.Interval, 2);
         var deadline = DateTime.UtcNow.AddSeconds(dc.ExpiresIn);
         while (DateTime.UtcNow < deadline)
         {
-            await Task.Delay(TimeSpan.FromSeconds(interval));
+            await Task.Delay(TimeSpan.FromSeconds(interval), ct);
             Json j;
             try
             {
@@ -518,7 +515,7 @@ public static class MicrosoftAuth
                         ["device_code"] = dc.DeviceCodeValue,
                         ["grant_type"] = "urn:ietf:params:oauth:grant-type:device_code",
                     }),
-                    contentType: "application/x-www-form-urlencoded");
+                    contentType: "application/x-www-form-urlencoded", ct: ct);
             }
             catch (Exception e) when (Net.IsTransient(e))
             {
@@ -591,7 +588,7 @@ public static class MicrosoftAuth
             body: xstsBody.Data(false), contentType: json);
         if (xstsCode == 401)
         {
-            switch ((long)xsts["XErr"].Double)
+            switch (xsts["XErr"].Int ?? 0)
             {
                 case 2148916233:
                     throw new LauncherException(T.Invoke("该微软账号还没有 Xbox 档案，请先在 xbox.com 登录一次。",

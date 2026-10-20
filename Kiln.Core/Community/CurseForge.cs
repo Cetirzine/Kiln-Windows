@@ -3,11 +3,12 @@ using System.Globalization;
 namespace Kiln.Core;
 
 /// CurseForge：作为 Modrinth 的补充来源。
-/// 默认通过 MCIM 社区镜像访问（无需密钥）；在设置中填写官方 API 密钥后改用官方接口。
+/// 无密钥时使用 Curse.tools 公共代理及 MCIM 备用；填写自己的 API 密钥后使用官方接口。
 public static class CurseForge
 {
     private const string Official = "https://api.curseforge.com";
     private const string Mirror = "https://mod.mcimirror.top/curseforge";
+    private const string PublicProxy = "https://api.curse.tools";
 
     /// 资源类型对应的 CurseForge 分类 ID
     public static int ClassId(Modrinth.ProjectType type) => type switch
@@ -28,30 +29,68 @@ public static class CurseForge
         _ => null,
     };
 
-    private static async Task<Json> Get(string path)
+    private static async Task<Json> Get(string path, CancellationToken ct = default)
     {
-        var key = LauncherSettings.Shared.CurseforgeKey.Trim();
-        var headers = key.Length > 0 ? new Dictionary<string, string> { ["x-api-key"] = key } : null;
-        var urls = new[] { (key.Length > 0 ? Official : Mirror) + path };
-        return Json.Parse(await Net.data(urls, headers: headers));
+        return await Send(path, LauncherSettings.Shared.CurseforgeKey, "GET", null, ct);
     }
 
     private static async Task<Json> Post(string path, Json body)
     {
-        var key = LauncherSettings.Shared.CurseforgeKey.Trim();
-        var baseUrl = key.Length == 0 ? Mirror : Official;
-        var headers = key.Length == 0 ? null : new Dictionary<string, string> { ["x-api-key"] = key };
-        var (code, j) = await Net.request(baseUrl + path, body: body.Data(false),
-            contentType: "application/json", headers: headers);
-        if (code != 200) throw new LauncherException($"CurseForge HTTP {code}");
-        return j;
+        return await Send(path, LauncherSettings.Shared.CurseforgeKey, "POST", body.Data(false));
+    }
+
+    private static async Task<Json> Send(string path, string apiKey, string method, byte[]? body, CancellationToken ct = default)
+    {
+        var key = apiKey.Trim();
+        var official = key.Length > 0;
+        var headers = official ? new Dictionary<string, string> { ["x-api-key"] = key } : null;
+        var urls = official ? new[] { Official + path } : new[] { PublicProxy + path, Mirror + path };
+        for (var index = 0; index < urls.Length; index++)
+        {
+            try
+            {
+                var (code, json) = await Net.request(urls[index], method: method,
+                    body: body, contentType: body == null ? null : "application/json", headers: headers, ct: ct);
+                if (code != 200)
+                {
+                    if (!official && index + 1 < urls.Length && code is 401 or 403 or 429 or 502 or 503 or 504) continue;
+                    throw ServiceError(code, official);
+                }
+                if (!json["data"].Exists) throw new CurseForgeException(T.Invoke("CurseForge 返回了无法识别的响应，请稍后重试。", "CurseForge returned an invalid response; retry later."));
+                return json;
+            }
+            catch (HttpRequestException) when (index + 1 < urls.Length) { }
+        }
+        throw ServiceError(503, official);
+    }
+
+    public static Task CheckConnection(string apiKey, CancellationToken ct = default) =>
+        Send("/v1/mods/238222", apiKey, "GET", null, ct);
+
+    public static CurseForgeException ServiceError(int status, bool official) => new(status switch
+    {
+        401 or 403 when official => T.Invoke("CurseForge API 密钥无效或无权访问。请在设置 → 下载中检查密钥。", "The CurseForge API key is invalid or lacks access. Check Settings → Downloads."),
+        401 or 403 => T.Invoke("CurseForge 镜像拒绝访问。请在设置 → 下载中配置自己的官方 API 密钥。", "The CurseForge mirror denied access. Configure your own official API key in Settings → Downloads."),
+        429 => T.Invoke("CurseForge 请求过于频繁，请稍后重试。", "CurseForge rate limit reached. Retry later."),
+        502 or 503 or 504 when !official => T.Invoke("CurseForge 公共代理暂时不可用。可稍后重试，或在设置 → 下载中配置官方 API 密钥。", "The public CurseForge services are unavailable. Retry later or configure an official API key in Settings → Downloads."),
+        404 => T.Invoke("CurseForge 项目或文件已不存在。", "This CurseForge project or file no longer exists."),
+        _ => T.Invoke($"CurseForge 服务暂时不可用（HTTP {status}），请稍后重试。", $"CurseForge is unavailable (HTTP {status}); retry later."),
+    });
+
+    /// Recomputed for every redirect; keys never travel to a mirror or unrelated host.
+    public static void AuthenticateDownload(HttpRequestMessage request, string apiKey)
+    {
+        request.Headers.Remove("x-api-key");
+        if (request.RequestUri is not { Scheme: "https" } uri || apiKey.Trim().Length == 0) return;
+        if (uri.Host is "edge.forgecdn.net" or "mediafilez.forgecdn.net" or "mediafiles.forgecdn.net")
+            request.Headers.TryAddWithoutValidation("x-api-key", apiKey.Trim());
     }
 
     private static string Query(IReadOnlyList<(string Key, string Value)> items) =>
         string.Join("&", items.Select(i => $"{i.Key}={Uri.EscapeDataString(i.Value)}"));
 
     public static async Task<IReadOnlyList<Modrinth.Project>> Search(string text, Modrinth.ProjectType type,
-        string? gameVersion, string? loader, int offset = 0)
+        string? gameVersion, string? loader, int offset = 0, CancellationToken ct = default)
     {
         var q = new List<(string, string)>
         {
@@ -61,7 +100,7 @@ public static class CurseForge
         if (!string.IsNullOrEmpty(gameVersion)) q.Add(("gameVersion", gameVersion));
         if ((type == Modrinth.ProjectType.Mod || type == Modrinth.ProjectType.Modpack)
             && loader != null && LoaderType(loader) is { } t) q.Add(("modLoaderType", $"{t}"));
-        var j = await Get("/v1/mods/search?" + Query(q));
+        var j = await Get("/v1/mods/search?" + Query(q), ct);
         var list = j["data"].Array.Select(ParseProject).Where(p => p != null).Select(p => p!).ToList();
         // CurseForge 的模糊匹配较宽：在热度顺序基础上，把名称更匹配的排到前面
         var key = text.ToLowerInvariant().Trim();
@@ -253,3 +292,5 @@ public static class CurseForge
         return urls;
     }
 }
+
+public sealed class CurseForgeException(string message) : Exception(message);

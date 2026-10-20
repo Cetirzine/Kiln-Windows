@@ -7,7 +7,10 @@ using System.Diagnostics;
 // --scene-videos <输出目录> [ffmpeg路径]：把每个已移植的场景渲染成 MP4（8 秒 @30fps）
 // 无参数：PCL2 检测/接管/验证 + Java 搜索
 
-if (args.Length >= 2 && args[0] == "--launch-test")
+if (args.Length > 0 && args[0] == "--parity-test") return await ParityTests.Run();
+if (args.Length > 0 && args[0] == "--network-smoke") return await NetworkSmoke.Run();
+
+if (args.Length >= 3 && args[0] == "--launch-test")
 {
     return await LaunchTest(args[1], args[2], args.Length > 3 ? args[3] : null);
 }

@@ -10,6 +10,10 @@ public static class InstanceManager
     {
         var n = name.Trim();
         if (n.Length == 0) return T.Invoke("请输入名称", "Enter a name");
+        var deviceName = n.Split('.')[0].ToUpperInvariant();
+        if (n.EndsWith('.') || n.Any(char.IsControl) || deviceName is "CON" or "PRN" or "AUX" or "NUL"
+            || System.Text.RegularExpressions.Regex.IsMatch(deviceName, "^(COM|LPT)[1-9]$"))
+            return T.Invoke("这个名称不能用作 Windows 文件夹名", "This name can't be used as a Windows folder name");
         if (n.IndexOfAny("/\\:!*?\"<>|".ToCharArray()) >= 0 || n.StartsWith('.'))
             return T.Invoke("名称不能包含 / \\ : ! * ? \" < > | 或以 . 开头",
                 "The name can't contain / \\ : ! * ? \" < > | or start with .");
@@ -42,6 +46,7 @@ public static class InstanceManager
     /// 重命名
     public static void Rename(McInstance instance, string newName)
     {
+        newName = newName.Trim();
         if (ValidateName(newName, instance.Folder) is { } e) throw new LauncherException(e);
         var deps = DependentsOf(instance);
         if (deps.Count > 0)
@@ -57,6 +62,7 @@ public static class InstanceManager
     /// 复制为新版本
     public static void Duplicate(McInstance instance, string newName)
     {
+        newName = newName.Trim();
         if (ValidateName(newName, instance.Folder) is { } e) throw new LauncherException(e);
         var target = Path.Combine(instance.Folder, "versions", newName);
         CopyDirectory(instance.Dir, target);

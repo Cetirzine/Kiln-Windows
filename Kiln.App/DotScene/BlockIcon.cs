@@ -51,7 +51,10 @@ public sealed class BlockIconControl : UserControl
     {
         Content = _grid;
         SizeChanged += (_, _) => Rebuild();
+        Loaded += (_, _) => { BlockTextures.Shared.Changed += TexturesChanged; Rebuild(); };
+        Unloaded += (_, _) => BlockTextures.Shared.Changed -= TexturesChanged;
     }
+    private void TexturesChanged() => DispatcherQueue.TryEnqueue(Rebuild);
 
     public static BlockIconControl For(string kind, double size = 44) => new() { Kind = kind, Width = size, Height = size };
 
@@ -216,6 +219,8 @@ public sealed class BlockTextures
         "block:command_block", "block:anvil", "block:smithing_table", "block:loom",
     };
 
+    public event Action? Changed;
+    public bool HasTextures { get { lock (_gate) return _faces.Count > 0; } }
     private readonly Dictionary<string, Faces> _faces = new();
     private readonly HashSet<string> _missing = new();
     private readonly object _gate = new();
@@ -258,6 +263,7 @@ public sealed class BlockTextures
             foreach (var (kind, faces) in result.Loaded) _faces[kind] = faces;
             if (_jars.Count > 0) _missing.UnionWith(result.NotFound);
         }
+        Changed?.Invoke();
     }
 
     private (Dictionary<string, Faces> Loaded, List<string> NotFound) LoadSync(List<string> todo)

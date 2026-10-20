@@ -49,7 +49,7 @@ public struct RuleContext
             {
                 switch (a)
                 {
-                    case "x86": match = false; break;
+                    case "x86": match = match && Arch == "x86"; break;
                     case "arm64" or "aarch64": match = match && Arch == "arm64"; break;
                     case "x86_64" or "x64" or "amd64": match = match && Arch == "x86_64"; break;
                 }
