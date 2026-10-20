@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Kiln.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Kiln.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
