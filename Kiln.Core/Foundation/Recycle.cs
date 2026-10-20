@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Kiln.Core;
 
 /// 把文件移入回收站（对应原版的 trashItem）
-internal static class Recycle
+public static class Recycle
 {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct SHFILEOPSTRUCTW

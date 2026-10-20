@@ -17,15 +17,27 @@ internal static class Ui
 
     public static Button Button(string content, RoutedEventHandler onClick)
     {
-        var b = new Button { Content = content };
+        // 统一按钮尺寸与对齐（参考原启动器的按钮风格）
+        var b = new Button
+        {
+            Content = content,
+            MinWidth = 96,
+            MinHeight = 34,
+            Padding = new Thickness(14, 6, 14, 6),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         b.Click += onClick;
         return b;
     }
 
     public static StackPanel Row(params UIElement[] children)
     {
-        var p = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
-        foreach (var c in children) p.Children.Add(c);
+        var p = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var c in children)
+        {
+            if (c is FrameworkElement fe) fe.VerticalAlignment = VerticalAlignment.Center;
+            p.Children.Add(c);
+        }
         return p;
     }
 

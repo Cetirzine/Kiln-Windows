@@ -7,6 +7,8 @@ namespace Kiln.App;
 public partial class App : Application
 {
     public static Window? MainAppWindow { get; private set; }
+    /// kiln://launch/<版本名> 激活时要启动的版本
+    public static string? PendingLaunchVersion { get; private set; }
 
     public App()
     {
@@ -23,10 +25,54 @@ public partial class App : Application
         var window = new MainWindow();
         MainAppWindow = window;
         window.Activate();
-        // 启动时的接管提示（PCL2）：已检测到您当前环境有PCL2，是否继承其配置？
-        _ = window.DispatcherQueue.TryEnqueue(async () => await Pcl2TakeOverDialog(window));
+        // kiln:// 深链接：kiln://launch/<版本名> 直接启动
+        var launchVersion = SystemIntegration.ParseLaunchUri(Environment.GetCommandLineArgs().Skip(1).ToArray());
+        if (launchVersion != null)
+        {
+            PendingLaunchVersion = launchVersion;
+            Log.log($"[Launch] 通过 kiln:// 链接启动：{launchVersion}");
+        }
+        // 注册 kiln:// 协议 + 自动检查更新
+        SystemIntegration.RegisterProtocol();
+        _ = window.DispatcherQueue.TryEnqueue(async () =>
+        {
+            await Pcl2TakeOverDialog(window);
+            await SystemIntegration.AutoUpdateCheck(window);
+            await HandlePendingLaunch();
+        });
         // 后台刷新 Mod 中文名表
         _ = Task.Run(async () => await ModNames.Shared.Refresh());
+    }
+
+    /// 处理 kiln:// 启动请求
+    public static async Task HandlePendingLaunch()
+    {
+        var version = PendingLaunchVersion;
+        if (version == null) return;
+        PendingLaunchVersion = null;
+        try
+        {
+            var instances = InstanceScanner.Scan(LauncherSettings.Shared.MinecraftFolder);
+            var inst = instances.FirstOrDefault(i => string.Equals(i.Name, version, StringComparison.OrdinalIgnoreCase));
+            if (inst == null) throw new LauncherException(Localization.T($"找不到版本 {version}", $"Instance {version} wasn't found"));
+            var account = AccountStore.Shared.Selected ?? AccountStore.Shared.AccountFor(inst.Setup);
+            if (account == null) throw new LauncherException(Localization.T("请先在启动器中登录账号。", "Sign in inside Kiln first."));
+            LauncherSettings.Shared.SelectedInstance = inst.Name;
+            MainAppWindow!.DispatcherQueue.TryEnqueue(() => ((MainWindow)MainAppWindow).ReloadCurrentPage());
+            var job = MainWindow.NewJob(Localization.T($"启动 {inst.Name}", $"Play {inst.Name}"));
+            await Launcher.Launch(inst, account, new LaunchOptions(), job, new LaunchCallbacks
+            {
+                OnExit = g => MainAppWindow!.DispatcherQueue.TryEnqueue(() =>
+                    SystemIntegration.Notify("Kiln",
+                        g.State == GameProcess.GameState.Crashed
+                            ? Localization.T($"{inst.Name} 崩溃了，点击启动器查看。", $"{inst.Name} crashed.")
+                            : "")),
+            });
+        }
+        catch (Exception e)
+        {
+            await ShowInfo(MainAppWindow!, e.Friendly());
+        }
     }
 
     private static async Task Pcl2TakeOverDialog(MainWindow window)

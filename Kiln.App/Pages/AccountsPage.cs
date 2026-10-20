@@ -36,10 +36,153 @@ public sealed class AccountsPage : Page
             var select = Ui.Button(Localization.T("使用", "Use"), (_, _) => { AccountStore.Shared.Select(a); Reload(); });
             select.IsEnabled = !isSelected;
             var remove = Ui.Button(Localization.T("删除", "Remove"), (_, _) => { AccountStore.Shared.Remove(a); Reload(); });
-            _list.Children.Add(Ui.Row(header, select, remove));
+            var actions = Ui.Row(select, remove);
+            // 皮肤与正版档案（对应原版 AccountUI）
+            var skin = Ui.Button(Localization.T("皮肤…", "Skin…"), async (_, _) => await SkinsDialog(a));
+            if (a.Kind == Account.AccountKind.Offline) actions.Children.Insert(0, skin);
+            if (a.Kind == Account.AccountKind.Microsoft)
+                actions.Children.Insert(0, Ui.Button(Localization.T("正版档案…", "Profile…"), async (_, _) => await ProfileDialog(a)));
+            _list.Children.Add(Ui.Row(header, actions));
         }
         if (AccountStore.Shared.Accounts.Count == 0)
             _list.Children.Add(Ui.Text(Localization.T("还没有账号。", "No accounts yet."), 13));
+    }
+
+    /// 正版档案：改名（实时可用性检查）、拥有的游戏、联机/聊天权限与封禁状态
+    private async Task ProfileDialog(Account acc)
+    {
+        try
+        {
+            var login = await AccountStore.Shared.Login(acc);
+            var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
+            panel.Children.Add(Ui.Text(Localization.T("加载中…", "Loading…"), 13));
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = Localization.T($"正版档案 — {acc.Name}", $"Profile — {acc.Name}"),
+                Content = panel,
+                CloseButtonText = Localization.T("关闭", "Close"),
+            };
+            _ = dialog.ShowAsync();
+            panel.Children.Clear();
+            var token = login.AccessToken;
+            var change = await MinecraftServices.GetNameChange(token);
+            panel.Children.Add(Ui.Text(
+                (change.NextChange != null
+                    ? Localization.T($"下次可改名：{change.NextChange:yyyy-MM-dd}", $"Next name change: {change.NextChange:yyyy-MM-dd}")
+                    : Localization.T("现在可以改名", "You can change your name now")) + $" · {acc.Name}", 13));
+            var nameBox = new TextBox { Header = Localization.T("改名", "Change name"), PlaceholderText = acc.Name };
+            var statusText = Ui.Text("", 12);
+            var busy = false;
+            nameBox.TextChanged += async (_, _) =>
+            {
+                var name = nameBox.Text.Trim();
+                if (!MinecraftServices.IsValidName(name) || busy) return;
+                busy = true;
+                try
+                {
+                    var status = await MinecraftServices.NameStatusOf(name, token);
+                    statusText.Text = status switch
+                    {
+                        MinecraftServices.NameStatus.Available => Localization.T("✓ 可以使用", "✓ Available"),
+                        MinecraftServices.NameStatus.Taken => Localization.T("已被使用", "Taken"),
+                        _ => Localization.T("不可用", "Not allowed"),
+                    };
+                }
+                catch { }
+                busy = false;
+            };
+            panel.Children.Add(nameBox);
+            panel.Children.Add(statusText);
+            var changeBtn = Ui.Button(Localization.T("改名", "Change"), async (_, _) =>
+            {
+                try
+                {
+                    var newName = await MinecraftServices.ChangeName(nameBox.Text.Trim(), token);
+                    AccountStore.Shared.UpdateName(acc, newName);
+                    await App.ShowInfo(App.MainAppWindow!, Localization.T($"已改名为 {newName}", $"Renamed to {newName}"));
+                    dialog.Hide();
+                    Reload();
+                }
+                catch (Exception e) { await Ui.ShowError(XamlRoot, e); }
+            });
+            panel.Children.Add(changeBtn);
+            try
+            {
+                var own = await MinecraftServices.GetOwnership(token);
+                panel.Children.Add(Ui.Text(
+                    (own.JavaPurchased ? Localization.T("已买断 Java 版", "Java Edition (owned)")
+                                        : Localization.T("Game Pass（未买断）", "Game Pass (not owned)"))
+                    + (own.Bedrock ? " · Bedrock" : "") + (own.Dungeons ? " · Dungeons" : "") + (own.Legends ? " · Legends" : ""), 12));
+            }
+            catch { }
+            try
+            {
+                var attr = await MinecraftServices.GetAttributes(token);
+                var lines = new List<string>
+                {
+                    (attr.Multiplayer ? "✓ " : "✗ ") + Localization.T("多人游戏", "Multiplayer"),
+                    (attr.Realms ? "✓ " : "✗ ") + "Realms",
+                    (attr.Chat ? "✓ " : "✗ ") + Localization.T("聊天", "Chat"),
+                };
+                if (attr.MultiplayerBan is { } ban)
+                    lines.Add((ban.Expires != null
+                        ? Localization.T($"联机封禁中（至 {ban.Expires:yyyy-MM-dd}）", $"Banned from multiplayer (until {ban.Expires:yyyy-MM-dd})")
+                        : Localization.T("联机封禁中", "Banned from multiplayer"))
+                        + (ban.Reason != null ? $": {ban.Reason}" : ""));
+                panel.Children.Add(Ui.Text(string.Join(" · ", lines), 12));
+            }
+            catch { }
+        }
+        catch (Exception e)
+        {
+            await Ui.ShowError(XamlRoot, e);
+        }
+    }
+
+    /// 皮肤管理：离线账号可用本地皮肤文件或同名正版玩家的皮肤
+    private async Task SkinsDialog(Account acc)
+    {
+        var skin = acc.Skin ?? new Account.OfflineSkin();
+        var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
+        var fileBox = new TextBox { Header = Localization.T("皮肤文件（PNG 64×64 / 64×32）", "Skin file (PNG 64×64 / 64×32)"), PlaceholderText = skin.File ?? "" };
+        var premiumBox = new TextBox { Header = Localization.T("同名正版玩家的皮肤（输入玩家名）", "Use a premium player's skin (name)"), PlaceholderText = skin.Premium ?? "" };
+        var slim = Ui.Toggle(skin.Slim, "Alex（纤细）", "Steve（经典）", _ => { });
+        panel.Children.Add(Ui.Button(Localization.T("选择皮肤文件…", "Choose skin file…"), async (_, _) =>
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.MainAppWindow!));
+            picker.FileTypeFilter.Add(".png");
+            var file = await picker.PickSingleFileAsync();
+            if (file == null) return;
+            try
+            {
+                var name = Skins.ImportSkin(file.Path);
+                fileBox.Text = name;
+                Skins.AddToLibrary(await File.ReadAllBytesAsync(file.Path), slim.IsOn, acc.Name);
+            }
+            catch (Exception e) { await Ui.ShowError(XamlRoot, e); }
+        }));
+        panel.Children.Add(fileBox);
+        panel.Children.Add(premiumBox);
+        panel.Children.Add(slim);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = Localization.T($"皮肤 — {acc.Name}", $"Skin — {acc.Name}"),
+            Content = panel,
+            PrimaryButtonText = Localization.T("保存", "Save"),
+            CloseButtonText = Localization.T("取消", "Cancel"),
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        var newSkin = new Account.OfflineSkin
+        {
+            File = fileBox.Text.Trim().Length > 0 ? fileBox.Text.Trim() : null,
+            Premium = premiumBox.Text.Trim().Length > 0 ? premiumBox.Text.Trim() : null,
+            Slim = slim.IsOn,
+        };
+        AccountStore.Shared.SetSkin(acc, newSkin.IsEmpty ? null : newSkin);
+        Reload();
     }
 
     private async Task AddOffline()

@@ -13,6 +13,8 @@ public sealed class DownloadPage : Page
     private readonly ProgressBar _progress = Ui.Progress();
     private readonly TextBlock _status = Ui.Text("", 13);
     private readonly ComboBox _targetBox = new() { MinWidth = 260 };
+    private readonly ComboBox _typeBox = new() { MinWidth = 140 };
+    private StackPanel _typeRow = new();
     private List<McInstance> _instances = new();
 
     public DownloadPage()
@@ -45,6 +47,16 @@ public sealed class DownloadPage : Page
 
         var controls = Ui.Row(_kindBox, _searchBox, Ui.Button(Localization.T("搜索", "Search"), async (_, _) => await LoadList()));
         panel.Children.Add(controls);
+        // 资源类型（Mod / 资源包 / 光影），仅在社区资源模式下显示
+        _typeBox.Items.Add("Mod");
+        _typeBox.Items.Add(Localization.T("资源包", "Resource packs"));
+        _typeBox.Items.Add(Localization.T("光影", "Shaders"));
+        _typeBox.SelectedIndex = 0;
+        _typeBox.SelectionChanged += async (_, _) => { if (_kindBox.SelectedIndex == 3) await LoadList(); };
+        _typeRow = Ui.Row(Ui.Text(Localization.T("类型：", "Type: "), 13), _typeBox,
+            Ui.Text(Localization.T("安装到：", "Install into: "), 13), _targetBox);
+        _typeRow.Visibility = Visibility.Collapsed;
+        panel.Children.Add(_typeRow);
         panel.Children.Add(Ui.Row(Ui.Text(Localization.T("安装到新版本：", "Install as: "), 13), _targetBox));
         panel.Children.Add(_list);
         panel.Children.Add(_progress);
@@ -65,6 +77,7 @@ public sealed class DownloadPage : Page
         _status.Text = Localization.T("加载中…", "Loading…");
         try
         {
+            _typeRow.Visibility = _kindBox.SelectedIndex == 3 ? Visibility.Visible : Visibility.Collapsed;
             switch (_kindBox.SelectedIndex)
             {
                 case 0:
@@ -197,8 +210,8 @@ public sealed class DownloadPage : Page
         var results = new List<Modrinth.Project>();
         if (slugHits.Count > 0)
             results.AddRange(await Modrinth.Projects(slugHits, inst.VanillaVersion, inst.Loaders.FirstOrDefault()));
-        results.AddRange(await Modrinth.Search(query, Modrinth.ProjectType.Mod, inst.VanillaVersion, inst.Loaders.FirstOrDefault()));
-        try { results.AddRange(await CurseForge.Search(query, Modrinth.ProjectType.Mod, inst.VanillaVersion, inst.Loaders.FirstOrDefault())); }
+        results.AddRange(await Modrinth.Search(query, (Modrinth.ProjectType)_typeBox.SelectedIndex, inst.VanillaVersion, inst.Loaders.FirstOrDefault()));
+        try { results.AddRange(await CurseForge.Search(query, (Modrinth.ProjectType)_typeBox.SelectedIndex, inst.VanillaVersion, inst.Loaders.FirstOrDefault())); }
         catch { }
         foreach (var p in results.GroupBy(p => p.Slug).Select(g => g.First()).Take(60))
         {
@@ -209,7 +222,7 @@ public sealed class DownloadPage : Page
             var proj = p;
             var btn = Ui.Button(Localization.T("安装", "Install"), async (_, _) =>
                 await RunJob(Localization.T($"安装 {proj.TitleText}", $"Install {proj.TitleText}"),
-                    async job => await InstallMod(inst, proj, job)));
+                    async job => await InstallMod(inst, proj, (Modrinth.ProjectType)_typeBox.SelectedIndex, job)));
             var row = new Grid();
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -219,14 +232,13 @@ public sealed class DownloadPage : Page
         }
     }
 
-    private static async Task InstallMod(McInstance inst, Modrinth.Project p, Job job)
+    private static async Task InstallMod(McInstance inst, Modrinth.Project p, Modrinth.ProjectType type, Job job)
     {
         var versions = p.SourceKind == Modrinth.Source.CurseForge
             ? await CurseForge.Files(p, inst.VanillaVersion, inst.Loaders.FirstOrDefault())
             : await Modrinth.Versions(p.Id, inst.VanillaVersion, inst.Loaders.FirstOrDefault());
         var v = versions.FirstOrDefault(x => !x.Blocked)
                 ?? throw new LauncherException(Localization.T("这个 Mod 不支持当前版本", "This mod doesn't support the game version"));
-        var type = Modrinth.ProjectType.Mod;
         var dest = Path.Combine(inst.GameDir, type.Folder(), v.FileName);
         var item = new DownloadItem(v.FileUrl, dest, v.Sha1, v.Size);
         if (p.SourceKind == Modrinth.Source.CurseForge) item.Urls = CurseForge.DownloadUrls(v);
@@ -370,5 +382,7 @@ public sealed class DownloadPage : Page
     private async Task RunJob(string title, Func<Job, Task> work) =>
         await RunJob<object?>(title, async job => { await work(job); return null; });
 }
+
+
 
 

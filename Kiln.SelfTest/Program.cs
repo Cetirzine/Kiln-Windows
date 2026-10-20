@@ -1,12 +1,84 @@
 using Kiln.Core;
+using Kiln.Core.DotScene;
+using System.Diagnostics;
 
 // Kiln Windows 版自检（对应原版 --self-test 与 --launch-test）：
 // --launch-test <版本> <目录> [Fabric]：安装并启动游戏（会短暂打开游戏窗口）
+// --scene-videos <输出目录> [ffmpeg路径]：把每个已移植的场景渲染成 MP4（8 秒 @30fps）
 // 无参数：PCL2 检测/接管/验证 + Java 搜索
 
 if (args.Length >= 2 && args[0] == "--launch-test")
 {
     return await LaunchTest(args[1], args[2], args.Length > 3 ? args[3] : null);
+}
+
+if (args.Length >= 2 && args[0] == "--scene-videos")
+{
+    return SceneVideos(args[1], args.Length > 2 ? args[2] : @"D:\Kiln for windows\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe");
+}
+
+int SceneVideos(string outDir, string ffmpeg)
+{
+    Directory.CreateDirectory(outDir);
+    // 与主页一致：宽度 250 个点；渲染注册表中的每个场景各一次（按 Id 去重）
+    const int cols = 250, rows = 88, cell = 4, fps = 30, seconds = 8;
+    var width = cols * cell;
+    var height = rows * cell;
+    var versions = new[]
+    {
+        "1.0", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.11", "1.12", "1.13",
+        "1.14", "1.15", "1.16", "1.17", "1.18", "1.19", "1.20", "1.21", "1.21.4", "1.21.5", "1.21.6",
+        "1.21.9", "1.21.11", "26.1", "26.2", "26.3", "26.4", "unknown",
+    };
+    var scenes = versions
+        .Select(v => (Version: v, Scene: DotScenes.SceneFor(v)))
+        .GroupBy(x => x.Scene.Id)
+        .Select(g => (Label: g.First().Version, Scene: g.First().Scene))
+        .ToList();
+    var ok = 0;
+    foreach (var (label, scene) in scenes)
+    {
+        var file = Path.Combine(outDir, $"{scene.Id}.mp4");
+        Console.WriteLine($"渲染 {label} → {file}");
+        var psi = new ProcessStartInfo
+        {
+            FileName = ffmpeg,
+            Arguments = $"-y -f rawvideo -pix_fmt bgr24 -s {width}x{height} -r {fps} -i - " +
+                        $"-c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p \"{file}\"",
+            RedirectStandardInput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        using var ffmpegProc = Process.Start(psi)!;
+        var stderrTask = ffmpegProc.StandardError.ReadToEndAsync();
+        var staticBuf = new DotBuffer(cols, rows);
+        scene.PaintStatic(staticBuf);
+        for (var frame = 0; frame < fps * seconds; frame++)
+        {
+            var t = (double)frame / fps;
+            var dyn = new DotBuffer(cols, rows);
+            scene.PaintDynamic(dyn, t, new SceneCast());
+            for (var i = 0; i < 14; i++)
+                if (Math.Sin(t * 3 + i * 1.7) > 0.93)
+                    dyn.Set((int)(DotMath.Noise(i, (int)(t / 2), 71) * cols), (int)(DotMath.Noise(i, (int)(t / 2), 72) * rows * 0.6), 0xFFFFFFu);
+            var composed = new DotBuffer(cols, rows);
+            Array.Copy(staticBuf.Px, composed.Px, composed.Px.Length);
+            for (var i = 0; i < dyn.Px.Length; i++)
+                if (dyn.Px[i] != 0) composed.Px[i] = dyn.Px[i];
+            var bgr = DotRenderer.RenderBgr24(composed, cell, scene.Background);
+            bgr = Glitch.Apply(bgr, width, rows, Glitch.Bands(t, rows));
+            ffmpegProc.StandardInput.BaseStream.Write(bgr, 0, bgr.Length);
+        }
+        ffmpegProc.StandardInput.Close();
+        ffmpegProc.WaitForExit(30000);
+        if (ffmpegProc.ExitCode != 0)
+            Console.WriteLine("  ffmpeg: " + stderrTask.Result[^Math.Min(600, stderrTask.Result.Length)..]);
+        Console.WriteLine(File.Exists(file) ? $"  ✓ {file}（{new FileInfo(file).Length / 1024} KB）" : "  ✗ 渲染失败");
+        if (File.Exists(file) && ffmpegProc.ExitCode == 0) ok++;
+    }
+    Console.WriteLine($"完成：{ok}/{scenes.Count}");
+    return ok == scenes.Count ? 0 : 1;
 }
 
 var pass = 0;
@@ -154,3 +226,5 @@ if (javas.Count > 0)
 Console.WriteLine();
 Console.WriteLine($"结果：{pass} 项通过，{fail} 项失败");
 return fail == 0 ? 0 : 1;
+
+

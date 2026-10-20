@@ -1,14 +1,13 @@
 using Kiln.App.Pages;
 using Kiln.Core;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
 
 namespace Kiln.App;
 
-/// <summary>主窗口：侧边栏导航（对应原版 MainView），底部有下载管理</summary>
+/// <summary>主窗口：侧边栏导航（对应原版 MainView），底部有下载管理。
+/// 页面为纯代码构建（无 XAML 文件），Release 下 Frame.Navigate(Type) 无法从 XAML 元数据解析，
+/// 因此直接创建页面实例设置 Content。</summary>
 public sealed partial class MainWindow : Window
 {
     private static readonly List<Job> Jobs = new();
@@ -24,7 +23,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         AppWindow.SetIcon("Assets/AppIcon.ico");
         Title = "Kiln";
-        RootFrame.Navigate(typeof(HomePage));
+        RootFrame.Content = new HomePage();
         Nav.SelectedItem = Nav.MenuItems[0];
     }
 
@@ -48,24 +47,22 @@ public sealed partial class MainWindow : Window
 
     public void NavigateTo(string tag)
     {
-        var page = tag switch
+        // 每次进入页面重新构建，保证数据刷新（与原版各页 onAppear 重新加载一致）
+        RootFrame.Content = tag switch
         {
-            "download" => typeof(DownloadPage),
-            "instances" => typeof(InstancesPage),
-            "accounts" => typeof(AccountsPage),
-            "setup" => typeof(SetupPage),
-            "about" => typeof(AboutPage),
-            "jobs" => typeof(JobsPage),
-            _ => typeof(HomePage),
+            "download" => new DownloadPage(),
+            "instances" => new InstancesPage(),
+            "accounts" => new AccountsPage(),
+            "setup" => new SetupPage(),
+            "about" => new AboutPage(),
+            "jobs" => new JobsPage(),
+            _ => new HomePage(),
         };
-        RootFrame.Navigate(page);
     }
 
     public void ReloadCurrentPage()
     {
         var tag = (Nav.SelectedItem as NavigationViewItem)?.Tag as string ?? "home";
-        RootFrame.BackStack.Clear();
         NavigateTo(tag);
     }
 }
-
