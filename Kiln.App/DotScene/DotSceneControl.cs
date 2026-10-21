@@ -18,6 +18,8 @@ public sealed class DotSceneControl : UserControl
     private IDotScene? _scene;
     private SceneCast _cast = new();
     private readonly DateTime _start = DateTime.UtcNow;
+    private double _nextCaptionSample;
+    public event Action<double>? CaptionLuminanceChanged;
 
     public IDotScene? Scene
     {
@@ -117,5 +119,23 @@ public sealed class DotSceneControl : UserControl
         stream.Seek(0, SeekOrigin.Begin);
         stream.Write(pixels, 0, pixels.Length);
         _bitmap.Invalidate();
+        if (t >= _nextCaptionSample)
+        {
+            _nextCaptionSample = t + .25;
+            // Sample the rendered pixels behind the native caption buttons, including animation.
+            var inset = MainWindow.Current?.AppWindow.TitleBar.RightInset ?? (int)(138 * scale);
+            var sampleWidth = Math.Min(w, Math.Max(1, inset));
+            var sampleHeight = Math.Min(rows * cell, Math.Max(1, (int)(32 * scale)));
+            double luminance = 0; var samples = 0;
+            static double Linear(byte value) { var srgb = value / 255d; return srgb <= .04045 ? srgb / 12.92 : Math.Pow((srgb + .055) / 1.055, 2.4); }
+            for (var y = 0; y < sampleHeight; y += 4)
+                for (var x = w - sampleWidth; x < w; x += 4)
+                {
+                    var offset = (y * w + x) * 4;
+                    luminance += .2126 * Linear(pixels[offset + 2]) + .7152 * Linear(pixels[offset + 1]) + .0722 * Linear(pixels[offset]);
+                    samples++;
+                }
+            if (samples > 0) CaptionLuminanceChanged?.Invoke(luminance / samples);
+        }
     }
 }

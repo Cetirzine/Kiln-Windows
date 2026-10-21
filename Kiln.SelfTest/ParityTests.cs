@@ -16,6 +16,16 @@ internal static class ParityTests
         try { Downloader.Run(Array.Empty<DownloadItem>(), cancelledJob).GetAwaiter().GetResult(); }
         catch (OperationCanceledException) { cancelled = true; }
         Check("Cancelled job stops downloads", cancelled);
+        using var authCancellation = new CancellationTokenSource(); authCancellation.Cancel();
+        void Cancels(string name, Func<Task> action)
+        {
+            try { action().GetAwaiter().GetResult(); Check(name, false); }
+            catch (OperationCanceledException) { Check(name, true); }
+            catch { Check(name, false); }
+        }
+        Cancels("Cancel Microsoft device code request", () => MicrosoftAuth.RequestDeviceCode(authCancellation.Token));
+        Cancels("Cancel Microsoft token polling", () => MicrosoftAuth.Poll(new MicrosoftAuth.DeviceCode("test", "test", "https://example.invalid", 2, 900), authCancellation.Token));
+        Cancels("Cancel Xbox/Minecraft profile requests", () => MicrosoftAuth.Minecraft("test", "test", authCancellation.Token));
         foreach (var host in new[] { "edge.forgecdn.net", "mediafilez.forgecdn.net", "mediafiles.forgecdn.net" })
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, "https://" + host + "/files/test.jar");

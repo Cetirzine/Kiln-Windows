@@ -173,7 +173,7 @@ public sealed class ResourceSearchPage : UserControl
             var target = Target; var game = _game.Text.Trim(); var loader = Loader;
             _status.Text = T("正在读取版本…", "Loading versions…");
             var versions = project.SourceKind == Modrinth.Source.CurseForge ? await CurseForge.Files(project, game.Length == 0 ? null : game, loader) : await Modrinth.Versions(project.Id, game.Length == 0 ? null : game, loader);
-            var list = new ListView { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 360, MinWidth = 430 };
+            var list = new ListView { SelectionMode = ListViewSelectionMode.Single, MaxHeight = 360, MinWidth = 0, HorizontalContentAlignment = HorizontalAlignment.Stretch };
             foreach (var v in versions) list.Items.Add(Ui.Col(Ui.Text(v.Name, 13, FontWeights.SemiBold), Ui.Text($"{v.Number} · {v.Published:yyyy-MM-dd} · {string.Join(", ", v.Loaders)}" + (v.Blocked ? T(" · 需手动下载", " · Manual download") : ""), 11.5)));
             list.SelectedIndex = versions.Count > 0 ? 0 : -1;
             var website = project.PageUrl ?? $"https://modrinth.com/{_type.Id()}/{project.Slug}";

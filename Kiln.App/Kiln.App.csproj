@@ -6,8 +6,8 @@
     <RootNamespace>Kiln.App</RootNamespace>
     <AssemblyName>Kiln</AssemblyName>
     <Product>Kiln</Product>
-    <Version>0.2.10</Version>
-    <InformationalVersion>0.2.10w</InformationalVersion>
+    <Version>0.2.11</Version>
+    <InformationalVersion>0.2.11w</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon Condition="Exists('Assets\AppIcon.ico')">Assets\AppIcon.ico</ApplicationIcon>

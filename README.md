@@ -43,7 +43,7 @@
 
 **社区资源**
 
-- Modrinth 与 CurseForge（经 MCIM 镜像，可填写官方 API 密钥）的 Mod、资源包、光影搜索与下载，安装时自动补全前置
+- Modrinth 与 CurseForge（Curse.tools 公共代理、MCIM 备用，可填写官方 API 密钥）的 Mod、资源包、光影搜索与下载，安装时自动补全前置
 - 已安装的 Mod 自动识别（SHA-1 / CurseForge 指纹）并检查更新，可一键更新
 - Mod 中文名：英文名后显示中文名，可用中文、拼音或拼音首字母搜索（如 `jxdl` → 机械动力）
 
@@ -54,7 +54,7 @@
 
 **Windows 原生**
 
-- WinUI 3 + Mica 材质，跟随系统浅色 / 深色外观
+- WinUI 3 自定义控件、点阵背景，跟随系统浅色 / 深色外观；透明窗口按钮随背景明暗切换黑白图标
 - 系统通知、深色模式、高分屏 DPI
 - 简体中文 / 繁體中文 / English
 

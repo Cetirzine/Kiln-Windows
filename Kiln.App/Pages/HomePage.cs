@@ -38,6 +38,7 @@ public sealed class HomePage : Page
     public HomePage()
     {
         BuildUi();
+        _scene.CaptionLuminanceChanged += luminance => { if (_loaded) MainWindow.Current!.SetCaptionBackdrop(luminance); };
         _timer.Tick += (_, _) => UpdateProgress();
         _nameTimer.Tick += (_, _) => { _slotName.Text = " "; _nameTimer.Stop(); };
         Loaded += async (_, _) =>
@@ -71,7 +72,7 @@ public sealed class HomePage : Page
     private void BuildUi()
     {
         var root = new Grid();
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 330 });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 180 });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, MinHeight = 238 });
         var hero = new Grid { Background = Solid(0x2B2219) };
@@ -138,15 +139,13 @@ public sealed class HomePage : Page
         {
             var index = i;
             var key = new KeyboardAccelerator { Key = (Windows.System.VirtualKey)((int)Windows.System.VirtualKey.Number1 + i) };
-            key.Invoked += (_, args) => { if (index < _instances.Count) Pick(_instances[index]); args.Handled = true; };
+            key.Invoked += (_, args) => { if (!KilnDialog.IsOpen && index < _instances.Count) Pick(_instances[index]); args.Handled = true; };
             KeyboardAccelerators.Add(key);
         }
         var enter = new KeyboardAccelerator { Key = Windows.System.VirtualKey.Enter };
-        enter.Invoked += async (_, args) => { args.Handled = true; if (_launchJob != null) _launchJob.Cancel(); else if (_selected == null) MainWindow.Current!.NavigateTo("download"); else await Play(new LaunchOptions()); };
+        enter.Invoked += async (_, args) => { args.Handled = true; if (KilnDialog.IsOpen) return; if (_launchJob != null) _launchJob.Cancel(); else if (_selected == null) MainWindow.Current!.NavigateTo("download"); else await Play(new LaunchOptions()); };
         KeyboardAccelerators.Add(enter);
-        var scroll = new ScrollViewer { Content = root, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        scroll.SizeChanged += (_, args) => root.MinHeight = args.NewSize.Height;
-        Content = scroll;
+        Content = root;
     }
 
     private void Pick(McInstance instance)

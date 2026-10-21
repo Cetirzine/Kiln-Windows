@@ -31,7 +31,17 @@ public sealed class InstanceDetailPage : Page
         _detail = new StackPanel { Spacing = 12 };
         if (section == "overview")
         {
-            _detail.Children.Add(Ui.Row(BlockIconControl.For(inst.Icon, 48), Ui.Col(Ui.Text(inst.Name, 21, FontWeights.Bold), Ui.Text(inst.Description), Ui.Text(McInstance.FormatPlayTime(setup.PlayTime) ?? "", 11.5))));        // 基本操作
+            var identity = new Grid { ColumnSpacing = 14 };
+            identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) }); identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var icon = Ui.Button("", async (_, _) => { var picked = await IconPicker.Pick(XamlRoot, inst.Icon); if (picked == null) return; var current = inst.Setup; current.Icon = string.IsNullOrEmpty(picked) ? null : picked; s.SaveInstanceSetup(current, inst.Dir); await BlockTextures.Shared.Ensure(new[] { picked }); UpdateDetail(); }); icon.Content = BlockIconControl.For(inst.Icon, 48); icon.Padding = new Thickness(0); icon.BorderThickness = new Thickness(0); identity.Children.Add(icon);
+            var description = Ui.Text(inst.Description, 12); description.Foreground = Ui.Brush("KilnTextSecondary");
+            var nameLabel = Ui.Text(inst.Name, 17, FontWeights.Bold); nameLabel.MaxLines = 1; nameLabel.TextTrimming = TextTrimming.CharacterEllipsis;
+            var labels = Ui.Col(nameLabel, description); labels.Spacing = 4;
+            if (McInstance.FormatPlayTime(setup.PlayTime) is { } played) { var time = Ui.Text(T($"已玩 {played}", $"Played for {played}"), 12); time.Foreground = Ui.Brush("KilnTextSecondary"); labels.Children.Add(time); }
+            var badges = Ui.Row(); badges.Spacing = 6;
+            void Badge(string text) => badges.Children.Add(new Border { Padding = new Thickness(6, 3, 6, 3), Background = Ui.Brush("KilnPanelSecondary"), BorderBrush = Ui.Brush("KilnStroke"), BorderThickness = new Thickness(1), Child = Ui.Text(text, 11) });
+            Badge($"Java {inst.JavaMajor}+"); if (inst.Isolated) Badge(T("独立游戏目录", "Separate game directory")); labels.Children.Add(badges); Grid.SetColumn(labels, 1); identity.Children.Add(labels);
+            var play = Ui.Button(T("开始游戏", "Play"), async (_, _) => { try { await LaunchCoordinator.Launch(inst, new LaunchOptions()); } catch (OperationCanceledException) { } catch (Exception e) { await Ui.ShowError(XamlRoot, e); } }); play.Background = Ui.Brush("KilnAccent"); play.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White); Grid.SetColumn(play, 2); identity.Children.Add(play);
         _detail.Children.Add(Ui.Row(
             Ui.Button(Localization.T("重命名", "Rename"), async (_, _) =>
             {
@@ -61,11 +71,21 @@ public sealed class InstanceDetailPage : Page
             }),
             Ui.Button(Localization.T("导出整合包", "Export modpack"), async (_, _) => await ExportModpack(inst)),
             Ui.Button(Localization.T("导出启动脚本", "Export launch script"), async (_, _) => await ExportScript(inst))));
-
+            _detail.Children.Add(Ui.Row(
+                Ui.Button(T("创建桌面快捷方式", "Create desktop shortcut"), (_, _) => SystemIntegration.CreateShortcut(inst)),
+                Ui.Button(T("复制启动链接", "Copy launch link"), (_, _) => { var data = new Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText("kiln://launch/" + Uri.EscapeDataString(inst.Name)); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data); })));
+            var folders = new Grid { ColumnSpacing = 8, RowSpacing = 8 };
+            for (var column = 0; column < 4; column++) folders.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var locations = new[] { (T("版本文件夹", "Version folder"), inst.Dir), (T("游戏目录", "Game directory"), inst.GameDir), ("Mods", Path.Combine(inst.GameDir, "mods")), (T("存档", "Worlds"), Path.Combine(inst.GameDir, "saves")), (T("资源包", "Resource packs"), Path.Combine(inst.GameDir, "resourcepacks")), (T("光影", "Shaders"), Path.Combine(inst.GameDir, "shaderpacks")), (T("截图", "Screenshots"), Path.Combine(inst.GameDir, "screenshots")), (T("崩溃报告", "Crash reports"), Path.Combine(inst.GameDir, "crash-reports")) };
+            for (var index = 0; index < locations.Length; index++)
+            {
+                if (index % 4 == 0) folders.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var (title, path) = locations[index]; var folder = OpenFolderButton(path); folder.Content = new TextBlock { Text = title, FontSize = 12, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis }; folder.MinWidth = 0; folder.HorizontalAlignment = HorizontalAlignment.Stretch; folder.Height = 34; ToolTipService.SetToolTip(folder, path); Grid.SetRow(folder, index / 4); Grid.SetColumn(folder, index % 4); folders.Children.Add(folder);
+            }
+            return Ui.Scroll(Ui.Card("", identity), Ui.Card(T("文件夹", "Folders"), folders), Ui.Card(T("管理", "Manage"), _detail));
         }
         if (section == "settings")
         {        // 版本设置
-        _detail.Children.Add(Ui.Text(Localization.T("版本设置", "Instance settings"), 17, FontWeights.SemiBold));
         var iconButton = Ui.Button(Localization.T("更换图标…", "Change icon…"), async (_, _) =>
         {
             var picked = await IconPicker.Pick(XamlRoot, inst.Icon);
@@ -120,7 +140,7 @@ public sealed class InstanceDetailPage : Page
         }
         if (section == "worlds")
         {        // 存档（直接进入 / 导出 / 删除 / 导入）
-        _detail.Children.Add(Ui.Text(Localization.T("存档", "Worlds"), 17, FontWeights.SemiBold));
+        if (InstanceManager.Worlds(inst).Count == 0) _detail.Children.Add(Ui.Text(T("还没有存档，可导入已有的存档或在游戏中创建。", "No worlds yet. Import a world or create one in game."), 12));
         foreach (var w in InstanceManager.Worlds(inst))
         {
             var world = w;

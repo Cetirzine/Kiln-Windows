@@ -33,14 +33,29 @@ public sealed class ModManager : UserControl
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        root.Children.Add(Ui.Row(_search, _filter,
+        var toolbar = new Grid { RowSpacing = 8 };
+        toolbar.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); toolbar.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var filters = new Grid { Name = "ModFilters", ColumnSpacing = 10 };
+        filters.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); filters.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
+        filters.Children.Add(Ui.SearchField(_search)); _filter.Width = double.NaN; _filter.MinWidth = 0; _filter.HorizontalAlignment = HorizontalAlignment.Stretch; _filter.Height = 28; Grid.SetColumn(_filter, 1); filters.Children.Add(_filter); toolbar.Children.Add(filters);
+        var actions = new[] {
             Ui.Button(T("添加…", "Add…"), async (_, _) => await AddFiles()),
             Ui.Button(T("下载 Mod", "Download mods"), (_, _) => MainWindow.Current!.NavigateTo("mods")),
             Ui.Button(T("检查更新", "Check updates"), async (_, _) => await Reload(true)),
             Ui.Button(T("全部更新", "Update all"), async (_, _) => await ApplyUpdates(_updates.Values.ToList())),
-            Ui.Button(T("打开文件夹", "Open folder"), async (_, _) => { Directory.CreateDirectory(DirectoryPath); await Windows.System.Launcher.LaunchFolderPathAsync(DirectoryPath); })));
+            Ui.Button(T("打开文件夹", "Open folder"), async (_, _) => { Directory.CreateDirectory(DirectoryPath); await Windows.System.Launcher.LaunchFolderPathAsync(DirectoryPath); }) };
+        var actionRow = new Grid { Name = "ModActions", ColumnSpacing = 8 };
+        for (var index = 0; index < actions.Length; index++)
+        {
+            actionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var button = actions[index]; var title = button.Content?.ToString() ?? "";
+            button.Content = new TextBlock { Text = title, FontSize = 12.5, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis }; button.MinWidth = 0; button.HorizontalAlignment = HorizontalAlignment.Stretch; ToolTipService.SetToolTip(button, title);
+            Grid.SetColumn(button, index); actionRow.Children.Add(button);
+        }
+        Grid.SetRow(actionRow, 1); toolbar.Children.Add(actionRow); root.Children.Add(toolbar);
         Grid.SetRow(_status, 1); root.Children.Add(_status);
-        var scroll = new ScrollViewer { Content = _rows }; Grid.SetRow(scroll, 2); root.Children.Add(scroll);
+        var scroll = new ScrollViewer { Content = _rows, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        var list = new Border { Name = "ModList", Background = Ui.Brush("KilnPanel"), BorderBrush = Ui.Brush("KilnStroke"), BorderThickness = new Thickness(1), Child = scroll }; Grid.SetRow(list, 2); root.Children.Add(list);
         _search.TextChanged += (_, _) => Render(); _filter.SelectionChanged += (_, _) => Render();
         _debounce.Tick += async (_, _) => { _debounce.Stop(); await Reload(false); };
         Loaded += async (_, _) =>

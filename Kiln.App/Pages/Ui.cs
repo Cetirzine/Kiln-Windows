@@ -274,15 +274,22 @@ internal static class Ui
 
     public static Border SearchField(TextBox input)
     {
-        input.Width = double.NaN; input.MinWidth = 0; input.MinHeight = 0; input.Height = 26; input.Padding = new Thickness(0); input.BorderThickness = new Thickness(0); input.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent); input.FontSize = 12.5;
+        var placeholderText = input.PlaceholderText;
+        input.PlaceholderText = "";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(input, placeholderText);
+        input.Width = double.NaN; input.MinWidth = 0; input.MinHeight = 0; input.Height = double.NaN; input.Padding = new Thickness(0); input.BorderThickness = new Thickness(0); input.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent); input.FontSize = 12.5;
+        input.Template = (ControlTemplate)Microsoft.UI.Xaml.Markup.XamlReader.Load("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='TextBox'><Grid Background='{TemplateBinding Background}'><ScrollViewer x:Name='ContentElement' Padding='0' Margin='0' VerticalAlignment='Center' HorizontalScrollMode='Enabled' HorizontalScrollBarVisibility='Hidden' VerticalScrollMode='Disabled' VerticalScrollBarVisibility='Disabled' IsTabStop='False' ZoomMode='Disabled'/></Grid></ControlTemplate>");
         input.VerticalContentAlignment = VerticalAlignment.Center;
-        input.VerticalAlignment = VerticalAlignment.Center;
-        var grid = new Grid { Height = 28, ColumnSpacing = 6, Padding = new Thickness(9, 0, 9, 0) };
+        input.VerticalAlignment = VerticalAlignment.Stretch;
+        var grid = new Grid { ColumnSpacing = 6, Padding = new Thickness(9, 0, 9, 0) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) }); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.Children.Add(new FontIcon { Glyph = "\uE721", FontSize = 11.5, Foreground = Brush("KilnTextSecondary"), VerticalAlignment = VerticalAlignment.Center }); Grid.SetColumn(input, 1); grid.Children.Add(input);
+        var placeholder = Text(placeholderText, 12.5); placeholder.Foreground = Brush("KilnTextSecondary"); placeholder.VerticalAlignment = VerticalAlignment.Center; placeholder.IsHitTestVisible = false; placeholder.TextWrapping = TextWrapping.NoWrap;
+        Grid.SetColumn(placeholder, 1); grid.Children.Add(placeholder);
         var clear = Button("×", (_, _) => input.Text = ""); clear.Style = (Style)Application.Current.Resources["KilnNavigationButton"]; clear.Padding = new Thickness(0); clear.MinHeight = 0; clear.Width = 16; clear.FontSize = 12;
         Grid.SetColumn(clear, 2); grid.Children.Add(clear); clear.Visibility = input.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        input.TextChanged += (_, _) => clear.Visibility = input.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        void Update() { clear.Visibility = input.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible; placeholder.Visibility = input.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed; }
+        input.TextChanged += (_, _) => Update(); Update();
         return new Border { Child = grid, Background = Brush("KilnPanel"), BorderBrush = Brush("KilnEdge"), BorderThickness = new Thickness(1), Height = 28 };
     }
 }

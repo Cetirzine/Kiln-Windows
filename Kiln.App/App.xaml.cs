@@ -23,6 +23,15 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         SystemIntegration.InitializeAppIdentity();
+        var arguments = Environment.GetCommandLineArgs();
+        if (arguments.Length >= 3 && arguments[1] == "--ui-smoke-test")
+        {
+            var diagnosticWindow = new MainWindow(diagnostics: true);
+            MainAppWindow = diagnosticWindow;
+            diagnosticWindow.Activate();
+            diagnosticWindow.DispatcherQueue.TryEnqueue(async () => await UiSmokeTest.Run(diagnosticWindow, arguments[2]));
+            return;
+        }
         var window = new MainWindow();
         MainAppWindow = window;
         window.Activate();

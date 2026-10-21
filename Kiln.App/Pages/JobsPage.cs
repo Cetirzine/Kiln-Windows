@@ -76,18 +76,59 @@ public sealed class JobsPage : Page
 /// 关于页
 public sealed class AboutPage : Page
 {
+    private static string T(string zh, string en) => Localization.T(zh, en);
+    private static Button Link(string title, string url)
+    {
+        var button = Ui.Button(title, (_, _) => _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url)));
+        button.Width = 100; button.VerticalAlignment = VerticalAlignment.Center;
+        button.Content = new TextBlock { Text = title, TextWrapping = TextWrapping.NoWrap, FontSize = 12.5 };
+        return button;
+    }
+
+    private static FrameworkElement Credit(string glyph, string title, string detail, Button? link = null)
+    {
+        var row = new Grid { ColumnSpacing = 12, Padding = new Thickness(10, 8, 10, 8) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+        row.Children.Add(new FontIcon { Glyph = glyph, FontSize = 18, Foreground = Ui.Brush("KilnTextSecondary"), VerticalAlignment = VerticalAlignment.Center });
+        var info = Ui.Text(detail, 11.5); info.Foreground = Ui.Brush("KilnTextSecondary");
+        var labels = Ui.Col(Ui.Text(title, 13, FontWeights.SemiBold), info); labels.Spacing = 4; labels.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(labels, 1); row.Children.Add(labels);
+        if (link != null) { Grid.SetColumn(link, 2); row.Children.Add(link); }
+        return row;
+    }
+
     public AboutPage()
     {
-        var panel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 24, 0, 0) };
-        panel.Children.Add(Ui.Text("Kiln", 40, FontWeights.Bold));
-        panel.Children.Add(Ui.Text($"Windows · {AppInfo.Version}", 14));
-        panel.Children.Add(Ui.Text(Localization.T($"作者 {AppInfo.Author}，为 Windows 打造的原生 Minecraft 启动器（C# / WinUI 3 移植版）",
-            $"By {AppInfo.Author}. A native Minecraft launcher for Windows (C# / WinUI 3 port)."), 13));
-        panel.Children.Add(Ui.Row(
-            Ui.Button("GitHub", (_, _) => _ = Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/Cetirzine/kiln-launcher")))));
-        panel.Children.Add(Ui.Button(Localization.T("检查更新", "Check for updates"), async (_, _) => await CheckUpdate()));
-        panel.Children.Add(Ui.Text(Localization.T("许可：PolyForm Strict 1.0.0", "License: PolyForm Strict 1.0.0"), 12));
-        Content = new ScrollViewer { Content = panel };
+        var app = new Grid { ColumnSpacing = 14 };
+        app.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
+        app.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        app.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+        app.Children.Add(new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri("ms-appx:///Assets/AppIcon.png")), Width = 48, Height = 48, VerticalAlignment = VerticalAlignment.Center });
+        var description = Ui.Text(T("为 Windows 打造的 Minecraft: Java Edition 启动器", "A Minecraft: Java Edition launcher built for Windows"), 12); description.Foreground = Ui.Brush("KilnTextSecondary");
+        var version = Ui.Text($"{AppInfo.Version} · Windows {Environment.OSVersion.Version} · {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()}", 11); version.Foreground = Ui.Brush("KilnTextSecondary");
+        var identity = Ui.Col(Ui.Text("Kiln", 18, FontWeights.Bold), description, version, Ui.Text(T($"作者：{AppInfo.Author}", $"By {AppInfo.Author}"), 12, FontWeights.Medium)); identity.Spacing = 3;
+        Grid.SetColumn(identity, 1); app.Children.Add(identity);
+        var repository = Link("GitHub", "https://github.com/Cetirzine/Kiln-Windows"); repository.Margin = new Thickness(0, 0, 10, 0); Grid.SetColumn(repository, 2); app.Children.Add(repository);
+        var thanks = Ui.Col(
+            Credit("\uE77B", T("龙腾猫跃", "LTCat (龙腾猫跃)"), T("Plain Craft Launcher 2（PCL2）的作者。本启动器的部分思路受 PCL2 启发。", "Author of Plain Craft Launcher 2 (PCL2). Some ideas in this launcher were inspired by PCL2."), Link(T("主页", "Homepage"), "https://space.bilibili.com/11343203")),
+            Credit("\uE7F4", "Plain Craft Launcher 2", T("一款出色的 Minecraft 启动器。", "An excellent Minecraft launcher."), Link("GitHub", "https://github.com/Meloong-Git/PCL")),
+            Credit("\uE7B8", "HMCL", T("Forge / NeoForge 安装流程与崩溃分析的实现思路参考了 HMCL。", "The Forge / NeoForge install flow and crash analysis follow approaches used by HMCL."), Link("GitHub", "https://github.com/HMCL-dev/HMCL")),
+            Credit("\uE968", "BMCLAPI (bangbang93)", T("提供 Minecraft 镜像下载源。", "Provides the Minecraft download mirror."), Link(T("网站", "Website"), "https://bmclapi.bangbang93.com")),
+            Credit("\uE721", "Modrinth", T("Mod、资源包与光影的搜索与下载。", "Search and downloads for mods, resource packs and shaders.")),
+            Credit("\uECAD", T("CurseForge 与社区镜像", "CurseForge & community mirrors"), T("CurseForge 上的 Mod 与资源；Curse.tools 提供无需密钥的公共代理。", "Mods and resources on CurseForge; Curse.tools provides a public proxy that needs no API key."), Link("Curse.tools", "https://curse.tools")),
+            Credit("\uE8D7", "MCIM（z0z0r4）", T("提供 Minecraft 资源的社区镜像。", "A community mirror for Minecraft resources."), Link("MCIM", "https://mod.mcimirror.top")),
+            Credit("\uE72E", "authlib-injector（yushijinhun）", T("外置登录与离线皮肤；在需要时下载，不随应用分发。", "Third-party login and offline skins; downloaded when needed, not bundled."), Link("GitHub", "https://github.com/yushijinhun/authlib-injector")));
+        thanks.Spacing = 0;
+        var inspiration = Ui.Text(T("界面布局参考了 Lunar Client。", "The layout is inspired by Lunar Client."), 11.5); inspiration.Foreground = Ui.Brush("KilnTextSecondary");
+        var legal = Ui.Text(T("Minecraft 是 Mojang Studios 的商标。本软件不是 Mojang 或 Microsoft 的官方产品。请购买正版游戏。", "Minecraft is a trademark of Mojang Studios. This software is not an official Mojang or Microsoft product. Please buy the game."), 12); legal.Foreground = Ui.Brush("KilnTextSecondary");
+        var buy = Link(T("购买 Minecraft", "Buy Minecraft"), "https://www.minecraft.net/store/minecraft-java-bedrock-edition-pc"); buy.Width = 160; buy.HorizontalAlignment = HorizontalAlignment.Left;
+        var panels = Ui.Col(Ui.Card("", app), Ui.Card(T("致谢", "Thanks"), thanks, inspiration), Ui.Card(T("法律信息", "Legal"), legal, buy, Ui.Text(T("许可：PolyForm Strict 1.0.0", "License: PolyForm Strict 1.0.0"), 11.5))); panels.Spacing = 14;
+        var root = new Grid { RowSpacing = 14 };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.Children.Add(Ui.Header(T("关于", "About"), Ui.Button(T("检查更新", "Check for updates"), async (_, _) => await CheckUpdate())));
+        var scroll = Ui.Scroll(panels); Grid.SetRow(scroll, 1); root.Children.Add(scroll); Content = root;
     }
 
     private async Task CheckUpdate()

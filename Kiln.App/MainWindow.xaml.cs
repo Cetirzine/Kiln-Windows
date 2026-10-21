@@ -21,8 +21,62 @@ public sealed partial class MainWindow : Window
     public static Job? LaunchJob { get; set; }
     public event Action? AccountsUpdated;
     private Microsoft.UI.Xaml.Controls.Primitives.Popup? _accountPopup;
+    private double? _captionBackdropLuminance;
+    private bool _whiteCaption;
+    private readonly DispatcherTimer _jobsTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private object? _jobsIdleContent;
+    private StackPanel? _jobsProgressContent;
+    private Border? _jobsProgressFill;
+    private TextBlock? _jobsProgressLabel;
+
+    internal void RefreshJobIndicator()
+    {
+        if (!_navigation.TryGetValue("jobs", out var button)) return;
+        var running = AllJobs.Where(j => j.State == Job.JobState.Running).ToList();
+        if (running.Count == 0) { button.Content = _jobsIdleContent; Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, Localization.T("任务", "Tasks")); return; }
+        _jobsProgressFill!.Width = 34 * Math.Clamp(running[0].Fraction, 0, 1);
+        _jobsProgressLabel!.Text = Localization.T($"{running.Count} 个任务", $"{running.Count} task{(running.Count == 1 ? "" : "s")}");
+        button.Content = _jobsProgressContent;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, _jobsProgressLabel.Text);
+    }
+
+    internal void SetCaptionBackdrop(double? luminance = null)
+    {
+        _captionBackdropLuminance = luminance;
+        ApplyCaptionContrast();
+    }
+
+    private void ApplyCaptionContrast()
+    {
+        if (!Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported()) return;
+        // Hysteresis keeps moving highlights in the pixel scene from flashing the glyphs.
+        _whiteCaption = _captionBackdropLuminance is double luminance
+            ? luminance < (_whiteCaption ? .21 : .15)
+            : Shell.ActualTheme == ElementTheme.Dark;
+        var foreground = _whiteCaption ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
+        var caption = AppWindow.TitleBar;
+        caption.ButtonBackgroundColor = caption.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        caption.ButtonForegroundColor = caption.ButtonInactiveForegroundColor = foreground;
+        caption.ButtonHoverForegroundColor = caption.ButtonPressedForegroundColor = foreground;
+        caption.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(32, foreground.R, foreground.G, foreground.B);
+        caption.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(56, foreground.R, foreground.G, foreground.B);
+    }
 
     public void AccountChanged() => AccountsUpdated?.Invoke();
+    public async Task CloseAccountsAsync()
+    {
+        var popup = _accountPopup;
+        if (popup == null || !popup.IsOpen) return;
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnClosed(object? sender, object args) => closed.TrySetResult();
+        popup.Closed += OnClosed;
+        try
+        {
+            if (!popup.DispatcherQueue.TryEnqueue(() => popup.IsOpen = false)) return;
+            await closed.Task;
+        }
+        finally { popup.Closed -= OnClosed; popup.Child = null; }
+    }
     public void ApplyWindowPreset(int preset)
     {
         preset = Math.Clamp(preset, 0, 2);
@@ -46,12 +100,18 @@ public sealed partial class MainWindow : Window
         popup.Child = new Border { Width = 330, Padding = new Thickness(16), Background = Ui.Brush("KilnPanel"), BorderBrush = Ui.Brush("KilnEdge"), BorderThickness = new Thickness(1.5), Child = accounts };
         popup.HorizontalOffset = Math.Clamp(origin.X + anchor.ActualWidth - 330, 12, Math.Max(12, root.Size.Width - 342));
         popup.VerticalOffset = Math.Clamp(origin.Y + 6, 12, Math.Max(12, root.Size.Height - 520));
-        popup.Closed += (_, _) => { _accountPopup = null; AccountsUpdated?.Invoke(); };
+        popup.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_accountPopup, popup)) _accountPopup = null;
+            popup.DispatcherQueue.TryEnqueue(() => popup.Child = null);
+            AccountsUpdated?.Invoke();
+        };
         _accountPopup = popup; popup.IsOpen = true;
     }
 
     public void ShowInstance(McInstance instance)
     {
+        SetCaptionBackdrop();
         _detailInstance = instance;
         LauncherSettings.Shared.SelectedInstance = instance.Name;
         RootFrame.Content = new Border { Padding = new Thickness(28, 48, 28, 24), Child = new InstanceDetailPage(instance) };
@@ -59,10 +119,13 @@ public sealed partial class MainWindow : Window
 
     public void ShowGameLog(GameProcess game)
     {
+        SetCaptionBackdrop();
         RootFrame.Content = new Border { Padding = new Thickness(28, 48, 28, 24), Child = new GameLogPage(game) };
     }
 
-    public MainWindow()
+    internal void ShowDiagnostics(UIElement content) => RootFrame.Content = content;
+
+    public MainWindow(bool diagnostics = false)
     {
         Current = this;
         _ = LauncherSettings.Shared; // Load the saved language before constructing any labels.
@@ -70,14 +133,8 @@ public sealed partial class MainWindow : Window
         ContentRegion.Children.Insert(0, new DotGridControl());
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(DragRegion);
-        var caption = AppWindow.TitleBar;
-        caption.ButtonBackgroundColor = Microsoft.UI.Colors.White;
-        caption.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.White;
-        caption.ButtonForegroundColor = Windows.UI.Color.FromArgb(255, 30, 30, 29);
-        caption.ButtonInactiveForegroundColor = Windows.UI.Color.FromArgb(255, 98, 98, 94);
-        caption.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(255, 227, 227, 224);
-        caption.ButtonHoverForegroundColor = Windows.UI.Color.FromArgb(255, 30, 30, 29);
-        caption.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(255, 210, 210, 206);
+        ApplyCaptionContrast();
+        Shell.ActualThemeChanged += (_, _) => ApplyCaptionContrast();
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         Title = "Kiln";
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1040, 680));
@@ -90,6 +147,9 @@ public sealed partial class MainWindow : Window
             Rect = new Windows.Foundation.Rect(0, 0, args.NewSize.Width, args.NewSize.Height),
         };
         BuildNavigation();
+        _jobsTimer.Tick += (_, _) => RefreshJobIndicator();
+        Shell.Loaded += (_, _) => _jobsTimer.Start();
+        Closed += (_, _) => _jobsTimer.Stop();
         for (var i = 0; i < 9; i++)
         {
             var index = i;
@@ -98,10 +158,10 @@ public sealed partial class MainWindow : Window
                 Key = (Windows.System.VirtualKey)((int)Windows.System.VirtualKey.Number1 + i),
                 Modifiers = Windows.System.VirtualKeyModifiers.Control | Windows.System.VirtualKeyModifiers.Menu,
             };
-            key.Invoked += (_, args) => { AccountStore.Shared.SelectAt(index); ReloadCurrentPage(); args.Handled = true; };
+            key.Invoked += (_, args) => { if (!KilnDialog.IsOpen) { AccountStore.Shared.SelectAt(index); ReloadCurrentPage(); } args.Handled = true; };
             Shell.KeyboardAccelerators.Add(key);
         }
-        NavigateTo("home");
+        if (!diagnostics) NavigateTo("home");
     }
 
     private void BuildNavigation()
@@ -112,6 +172,12 @@ public sealed partial class MainWindow : Window
         AddNavigation("download", Localization.T("下载", "Download"), "\uE896");
         AddNavigation("setup", Localization.T("设置", "Settings"), "\uE713");
         AddNavigation("jobs", Localization.T("任务", "Tasks"), "\uE9F9", true);
+        _jobsIdleContent = _navigation["jobs"].Content;
+        _jobsProgressFill = new Border { Name = "SidebarJobFill", Height = 3, Width = 0, Background = Ui.Brush("KilnAccent"), HorizontalAlignment = HorizontalAlignment.Left };
+        var track = new Grid { Width = 34, Height = 3, Background = Ui.Brush("KilnStroke"), HorizontalAlignment = HorizontalAlignment.Center }; track.Children.Add(_jobsProgressFill);
+        _jobsProgressLabel = Ui.Text("", 9.5); _jobsProgressLabel.HorizontalAlignment = HorizontalAlignment.Center; _jobsProgressLabel.Foreground = Ui.Brush("KilnTextSecondary");
+        _jobsProgressContent = Ui.Col(track, _jobsProgressLabel); _jobsProgressContent.Spacing = 4; _jobsProgressContent.VerticalAlignment = VerticalAlignment.Center;
+        RefreshJobIndicator();
         AddNavigation("about", Localization.T("关于", "About"), "\uE946", true);
     }
 
@@ -134,6 +200,7 @@ public sealed partial class MainWindow : Window
     {
         var job = new Job(title);
         lock (JobsGate) Jobs.Add(job);
+        Current?.DispatcherQueue.TryEnqueue(() => Current?.RefreshJobIndicator());
         return job;
     }
 
@@ -149,6 +216,7 @@ public sealed partial class MainWindow : Window
 
     public void NavigateTo(string tag)
     {
+        SetCaptionBackdrop();
         _detailInstance = null;
         _currentPage = tag;
         foreach (var (key, button) in _navigation)

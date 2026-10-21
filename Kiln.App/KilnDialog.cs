@@ -1,28 +1,47 @@
 ﻿using Kiln.App.Pages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Input;
 
 namespace Kiln.App;
 
 // A Kiln window drawn over the current XamlRoot. No Fluent dialog chrome.
-public sealed class KilnDialog : ContentDialog
+public sealed class KilnDialog
 {
+    public XamlRoot? XamlRoot { get; set; }
+    public object? Title { get; set; }
+    public object? Content { get; set; }
+    public string PrimaryButtonText { get; set; } = "";
+    public string SecondaryButtonText { get; set; } = "";
+    public string CloseButtonText { get; set; } = "";
+    public ContentDialogButton DefaultButton { get; set; }
+    private bool _primaryEnabled = true;
+    public bool IsPrimaryButtonEnabled { get => _primaryEnabled; set { _primaryEnabled = value; if (_primaryButton != null) _primaryButton.IsEnabled = value; } }
+    public bool IsSecondaryButtonEnabled { get; set; } = true;
     public double PreferredWidth { get; set; }
-    private Popup? _popup;
+    public static bool IsOpen => _openCount > 0;
+    private static int _openCount;
+    private Grid? _overlay;
     private TaskCompletionSource<ContentDialogResult>? _completion;
     private FrameworkElement? _previousFocus;
     private Border? _bodyHost;
-    private long? _primaryEnabledToken;
-    public new async Task<ContentDialogResult> ShowAsync()
+    private Button? _primaryButton;
+    private bool _closing;
+    private ContentDialogResult _result;
+    public event Action? Closing;
+    public async Task<ContentDialogResult> ShowAsync()
     {
         if (_completion != null) throw new InvalidOperationException("This dialog is already open.");
         var root = XamlRoot ?? App.MainAppWindow?.Content.XamlRoot ?? throw new InvalidOperationException("No active window.");
-        _completion = new TaskCompletionSource<ContentDialogResult>();
+        var host = App.MainAppWindow?.Content is Panel windowPanel && windowPanel.XamlRoot == root ? windowPanel : root.Content as Panel ?? throw new InvalidOperationException("The dialog needs a panel at the window root.");
+        _completion = new TaskCompletionSource<ContentDialogResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _closing = false; _result = ContentDialogResult.None;
         _previousFocus = FocusManager.GetFocusedElement(root) as FrameworkElement;
-        var overlay = new Grid { Width = root.Size.Width, Height = root.Size.Height, Background = new SolidColorBrush(Windows.UI.Color.FromArgb(82, 0, 0, 0)) };
+        var overlay = new Grid { Name = "KilnModalOverlay", Width = root.Size.Width, Height = root.Size.Height, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Background = new SolidColorBrush(Windows.UI.Color.FromArgb(82, 0, 0, 0)) };
+        Grid.SetColumnSpan(overlay, Math.Max(1, (host as Grid)?.ColumnDefinitions.Count ?? 1));
+        Grid.SetRowSpan(overlay, Math.Max(1, (host as Grid)?.RowDefinitions.Count ?? 1));
+        Canvas.SetZIndex(overlay, 10000);
         var width = PreferredWidth > 0 ? PreferredWidth : Content is string ? 440d : 560d;
         var surface = new Grid { Width = Math.Min(width, Math.Max(280, root.Size.Width - 64)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         surface.Children.Add(new Border { Background = new SolidColorBrush(Windows.UI.Color.FromArgb(90, 0, 0, 0)), Translation = new System.Numerics.Vector3(6, 6, 0) });
@@ -43,7 +62,7 @@ public sealed class KilnDialog : ContentDialog
         {
             var primary = Ui.Button(PrimaryButtonText, (_, _) => Finish(ContentDialogResult.Primary)); primary.IsEnabled = IsPrimaryButtonEnabled;
             primary.BorderBrush = Ui.Brush("KilnAccent"); primary.FontWeight = FontWeights.SemiBold; buttons.Children.Add(primary);
-            _primaryEnabledToken = RegisterPropertyChangedCallback(IsPrimaryButtonEnabledProperty, (_, _) => primary.IsEnabled = IsPrimaryButtonEnabled);
+            _primaryButton = primary;
         }
         content.Children.Add(buttons); panel.Children.Add(content);
         surface.Children.Add(new Border { Background = Ui.Brush("KilnPanel"), BorderBrush = Ui.Brush("KilnEdge"), BorderThickness = new Thickness(1.5), Child = panel }); overlay.Children.Add(surface);
@@ -52,20 +71,49 @@ public sealed class KilnDialog : ContentDialog
             if (args.Key == Windows.System.VirtualKey.Escape) { args.Handled = true; Finish(ContentDialogResult.None); }
             else if (args.Key == Windows.System.VirtualKey.Enter && DefaultButton == ContentDialogButton.Primary && IsPrimaryButtonEnabled && !string.IsNullOrEmpty(PrimaryButtonText)) { args.Handled = true; Finish(ContentDialogResult.Primary); }
         };
-        _popup = new Popup { XamlRoot = root, Child = overlay, IsLightDismissEnabled = false, ShouldConstrainToRootBounds = true };
-        _popup.IsOpen = true;
-        foreach (var child in buttons.Children) if (child is Control control) { control.Focus(FocusState.Programmatic); break; }
+        _overlay = overlay;
         var completion = _completion;
-        try { return await completion.Task; }
+        void Resize(XamlRoot sender, XamlRootChangedEventArgs args) { overlay.Width = root.Size.Width; overlay.Height = root.Size.Height; surface.Width = Math.Min(width, Math.Max(280, root.Size.Width - 64)); scroll.MaxHeight = Math.Max(120, root.Size.Height - 220); }
+        root.Changed += Resize;
+        var disabled = UnderlayControls(host).Where(c => c.IsEnabled).ToList();
+        // Keep every dialog control in the window's visual tree: no detached Popup HWND.
+        // Disable the underlying content rather than letting keyboard focus escape the modal.
+        foreach (var control in disabled) control.IsEnabled = false;
+        _openCount++;
+        try
+        {
+            host.Children.Add(overlay);
+            foreach (var child in buttons.Children) if (child is Control control) { control.Focus(FocusState.Programmatic); break; }
+            return await completion.Task;
+        }
         finally
         {
-            _popup.IsOpen = false; _popup.Child = null; _bodyHost.Child = null;
-            if (_primaryEnabledToken is { } token) UnregisterPropertyChangedCallback(IsPrimaryButtonEnabledProperty, token);
-            _primaryEnabledToken = null;
-            _popup = null; _completion = null;
-            if (_previousFocus is Control previous) previous.Focus(FocusState.Programmatic);
+            root.Changed -= Resize;
+            overlay.Visibility = Visibility.Collapsed; host.Children.Remove(overlay); _bodyHost.Child = null;
+            foreach (var control in disabled) control.IsEnabled = true;
+            _openCount--;
+            _primaryButton = null; _bodyHost = null;
+            _overlay = null; _completion = null;
+            if (_previousFocus is Control { IsLoaded: true } previous && previous.XamlRoot == root) previous.Focus(FocusState.Programmatic);
+            _previousFocus = null;
         }
     }
-    public new void Hide() => Finish(ContentDialogResult.None);
-    private void Finish(ContentDialogResult result) => _completion?.TrySetResult(result);
+    public void Hide() => Finish(ContentDialogResult.None);
+    private static IEnumerable<Control> UnderlayControls(DependencyObject parent)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is Control control) yield return control;
+            else foreach (var descendant in UnderlayControls(child)) yield return descendant;
+        }
+    }
+    private void Finish(ContentDialogResult result)
+    {
+        if (_completion == null || _overlay == null || _closing) return;
+        _closing = true; _result = result; Closing?.Invoke();
+        var overlay = _overlay; var completion = _completion;
+        // The clicked button must finish dispatching its input event before its tree is closed.
+        if (!overlay.DispatcherQueue.TryEnqueue(() => { overlay.Visibility = Visibility.Collapsed; completion.TrySetResult(result); })) completion.TrySetResult(result);
+    }
 }

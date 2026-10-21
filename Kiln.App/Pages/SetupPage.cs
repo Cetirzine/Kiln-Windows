@@ -66,15 +66,18 @@ public sealed class SetupPage : Page
                 var info = Ui.Text(detail, 11.5); info.MaxLines = 1; info.TextTrimming = TextTrimming.CharacterEllipsis; info.Foreground = Ui.Brush("KilnTextSecondary");
                 var labels = Ui.Col(name, info); labels.Spacing = 4; labels.VerticalAlignment = VerticalAlignment.Center;
                 Grid.SetColumn(labels, 1); row.Children.Add(labels);
-                if (selected) { var check = new FontIcon { Glyph = "\uE73E", FontSize = 13, Foreground = Ui.Brush("KilnAccent") }; Grid.SetColumn(check, 2); row.Children.Add(check); }
+                if (selected) { var check = new FontIcon { Glyph = "\uE73E", FontSize = 13, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Foreground = Ui.Brush("KilnAccent") }; Grid.SetColumn(check, 2); row.Children.Add(check); }
                 var choose = new Button { Content = row, Style = (Style)Application.Current.Resources["KilnNavigationButton"], Padding = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Stretch, Background = Ui.Brush(selected ? "KilnHover" : "KilnPanel"), BorderBrush = Ui.Brush("KilnAccent"), BorderThickness = new Thickness(selected ? 3 : 0, 0, 0, 0) };
                 choose.Click += (_, _) => { _s.JavaPath = path; Render(); };
                 ToolTipService.SetToolTip(choose, detail);
-                var layout = new Grid(); layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) }); layout.Children.Add(choose);
+                var layout = new Grid { Background = Ui.Brush(selected ? "KilnHover" : "KilnPanel") };
+                layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                layout.Children.Add(choose);
                 if (removable)
                 {
+                    layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                     var remove = Ui.Button(T("移除", "Remove"), (_, _) => { _s.CustomJavas = _s.CustomJavas.Where(p => !string.Equals(p, path, StringComparison.OrdinalIgnoreCase)).ToList(); if (selected) _s.JavaPath = ""; javas.RemoveAll(j => j.Path == path); Render(); });
-                    remove.Width = 64; remove.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(remove, 1); layout.Children.Add(remove);
+                    remove.Width = 64; remove.Margin = new Thickness(0, 0, 12, 0); remove.HorizontalAlignment = HorizontalAlignment.Right; remove.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(remove, 1); layout.Children.Add(remove);
                 }
                 list.Children.Add(new Border { Child = layout, BorderBrush = Ui.Brush("KilnStroke"), BorderThickness = new Thickness(0, 0, 0, 1) });
             }

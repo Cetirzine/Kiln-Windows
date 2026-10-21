@@ -483,12 +483,12 @@ public static class MicrosoftAuth
         return id;
     }
 
-    public static async Task<DeviceCode> RequestDeviceCode()
+    public static async Task<DeviceCode> RequestDeviceCode(CancellationToken ct = default)
     {
         var (code, j) = await Net.request(
             "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
             body: Net.formBody(new Dictionary<string, string> { ["client_id"] = ClientId(), ["scope"] = Scope }),
-            contentType: "application/x-www-form-urlencoded");
+            contentType: "application/x-www-form-urlencoded", ct: ct);
         if (code != 200 || j["user_code"].String is not { } user || j["device_code"].String is not { } device)
             throw new LauncherException(j["error_description"].String ?? $"HTTP {code}");
         return new DeviceCode(user, device,
@@ -517,6 +517,7 @@ public static class MicrosoftAuth
                     }),
                     contentType: "application/x-www-form-urlencoded", ct: ct);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception e) when (Net.IsTransient(e))
             {
                 // 网络暂时中断时继续等待，下一轮再查询
@@ -554,9 +555,10 @@ public static class MicrosoftAuth
     }
 
     /// Microsoft → Xbox Live → XSTS → Minecraft
-    public static async Task<Result> Minecraft(string msAccess, string refresh)
+    public static async Task<Result> Minecraft(string msAccess, string refresh, CancellationToken ct = default, Action<string>? progress = null)
     {
         const string json = "application/json";
+        progress?.Invoke(T.Invoke("正在连接 Xbox Live…", "Connecting to Xbox Live…"));
         // XBL
         var xblBody = Json.From(new Dictionary<string, Json>
         {
@@ -570,10 +572,11 @@ public static class MicrosoftAuth
             ["TokenType"] = Json.Of("JWT"),
         });
         var (_, xbl) = await Net.request("https://user.auth.xboxlive.com/user/authenticate",
-            body: xblBody.Data(false), contentType: json);
+            body: xblBody.Data(false), contentType: json, ct: ct);
         if (xbl["Token"].String is not { } xblToken || xbl["DisplayClaims"]["xui"][0]["uhs"].String is not { } uhs)
             throw new LauncherException(T.Invoke("登录失败", "Sign-in failed") + " (XBL)");
         // XSTS
+        progress?.Invoke(T.Invoke("正在验证 Xbox 账号权限…", "Checking Xbox account permissions…"));
         var xstsBody = Json.From(new Dictionary<string, Json>
         {
             ["Properties"] = Json.From(new Dictionary<string, Json>
@@ -585,7 +588,7 @@ public static class MicrosoftAuth
             ["TokenType"] = Json.Of("JWT"),
         });
         var (xstsCode, xsts) = await Net.request("https://xsts.auth.xboxlive.com/xsts/authorize",
-            body: xstsBody.Data(false), contentType: json);
+            body: xstsBody.Data(false), contentType: json, ct: ct);
         if (xstsCode == 401)
         {
             switch (xsts["XErr"].Int ?? 0)
@@ -604,9 +607,10 @@ public static class MicrosoftAuth
         if (xsts["Token"].String is not { } xstsToken)
             throw new LauncherException(T.Invoke("登录失败", "Sign-in failed") + $" (XSTS {xstsCode})");
         // Minecraft
+        progress?.Invoke(T.Invoke("正在登录 Minecraft…", "Signing into Minecraft…"));
         var mcBody = Json.From(new Dictionary<string, Json> { ["identityToken"] = Json.Of($"XBL3.0 x={uhs};{xstsToken}") });
         var (mcCode, mc) = await Net.request("https://api.minecraftservices.com/authentication/login_with_xbox",
-            body: mcBody.Data(false), contentType: json);
+            body: mcBody.Data(false), contentType: json, ct: ct);
         if (mc["access_token"].String is not { } mcToken)
         {
             var detail = mc["errorMessage"].String ?? mc["error"].String ?? "";
@@ -621,9 +625,10 @@ public static class MicrosoftAuth
                 + (detail.Length == 0 ? "" : $"：{detail}"));
         }
         var expires = DateTime.UtcNow.AddSeconds(mc["expires_in"].Int ?? 86400);
+        progress?.Invoke(T.Invoke("正在读取 Minecraft 玩家档案…", "Loading the Minecraft player profile…"));
         // 档案
         var (pCode, profile) = await Net.request("https://api.minecraftservices.com/minecraft/profile", method: "GET",
-            headers: new Dictionary<string, string> { ["Authorization"] = $"Bearer {mcToken}" });
+            headers: new Dictionary<string, string> { ["Authorization"] = $"Bearer {mcToken}" }, ct: ct);
         if (pCode == 404)
             throw new LauncherException(T.Invoke("该账号没有 Minecraft: Java Edition，或 Game Pass 已过期。",
                 "This account doesn't own Minecraft: Java Edition, or Game Pass has expired."));
