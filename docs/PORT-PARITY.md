@@ -72,6 +72,11 @@ UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、Inst
 
 ## 必须完成的验证
 
+尚未发布的 Windows Java / 实际启动修改：
+
+- Java 双管道读取、超时/取消、x86 识别、Windows 基础 CDS 路径和原生库架构过滤已修复；实际窗口取代日志/20 秒猜测，防止启动器过早隐藏。166 项核心、149 项 UI 回归通过，构建无警告/错误。
+- 真实 Vanilla 1.21.1 已在独立特殊字符路径中完成安装、进入主菜单、正常关闭、首次写入 CDS 以及第二次复用缓存。首次动态缓存有显著 Windows JDK 清单解析延迟，尚需改善；加载器矩阵和其余功能未全部完成。证据和边界见 [GAME-LAUNCH-VERIFICATION.md](GAME-LAUNCH-VERIFICATION.md)。
+
 0.2.16w 任务与滚动控件：
 
 - 对照 `DownloadPage.swift` 的 `TaskManagerPage` / `JobRow` 恢复成功绿色、失败红色、取消次级色及运行中蓝色百分比；百分比按原版截断。保留 `JobCenter` 完成/取消后的统一阶段文字，错误仍显示实际原因，两行溢出使用省略。清除按钮移回列表下方，仅有已结束任务时显示；空态恢复托盘图、13pt 文本、8pt 间距及 50pt 留白。取消使用 28pt 自定义图标按钮。

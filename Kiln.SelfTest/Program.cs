@@ -7,6 +7,11 @@ using System.Diagnostics;
 // --scene-videos <输出目录> [ffmpeg路径]：把每个已移植的场景渲染成 MP4（8 秒 @30fps）
 // 无参数：PCL2 检测/接管/验证 + Java 搜索
 
+if (args.Length >= 2 && args[0] == "--java-command-fixture") return await JavaTests.Child(args[1], args.Length >= 3 ? args[2] : null);
+if (args.SequenceEqual(new[] { "-XshowSettings:properties", "-version" })) return Environment.GetEnvironmentVariable("KILN_JAVA_FIXTURE") == "properties" ? await JavaTests.Child("properties", null) : 64;
+if (args.Length >= 2 && args[0] == "--game-smoke") return await GameSmoke.Start(args[1], args.Length >= 3 ? args[2] : "1.21.1", args.Length >= 4 ? args[3] : "Vanilla");
+if (args.Length >= 4 && args[0] == "--game-smoke-resume") return await GameSmoke.Resume(args[1], args[2], args[3]);
+if (args.Length >= 4 && args[0] == "--game-smoke-worker") return await GameSmoke.Worker(args[1], args[2], args[3]);
 if (args.Length > 0 && args[0] == "--parity-test") return await ParityTests.Run();
 if (args.Length > 0 && args[0] == "--network-smoke") return await NetworkSmoke.Run();
 if (args.Length >= 2 && args[0] == "--updater-regression") return await UpdaterVerification.Regression(args[1]);
@@ -23,6 +28,8 @@ if (args.Length >= 2 && args[0] == "--scene-videos")
 {
     return SceneVideos(args[1], args.Length > 2 ? args[2] : @"D:\Kiln for windows\tools\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe");
 }
+
+if (args.Length > 0) { Console.Error.WriteLine("Unknown diagnostic mode; no migration was performed."); return 64; }
 
 int SceneVideos(string outDir, string ffmpeg)
 {

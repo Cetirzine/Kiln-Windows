@@ -14,6 +14,7 @@ internal static class ParityTests
         SeatedSceneTests.Run(Check);
         UpdaterTests.Run(Check);
         SettingsTests.Run(Check);
+        JavaTests.Run(Check).GetAwaiter().GetResult();
         Check("Offline UUID matches Minecraft server", Account.OfflineUuid("Notch") == "b50ad385829d3141a2167e7d7539ba7f");
         Check("Offline rename changes UUID", Account.OfflineUuid("Steve") != Account.OfflineUuid("Alex"));
         var cancelledJob = new Job("Cancellation test"); cancelledJob.Cancel();

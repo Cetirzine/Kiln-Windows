@@ -7,7 +7,7 @@ namespace Kiln.Core;
 /// 版本 JSON 中 rules 的判定环境
 public struct RuleContext
 {
-    /// "arm64" 或 "x86_64"，取决于将要使用的 Java 架构
+    /// 将要使用的 Java 架构：x86_64、x86 或 arm64。
     public string Arch;
     public bool Demo;
     public bool CustomResolution;
@@ -514,7 +514,10 @@ public sealed class McInstance : IEquatable<McInstance>
             }
             string? nativeArch = null;
             if (name.Contains(":natives-windows"))
-                nativeArch = name.EndsWith("arm64") ? "arm64" : "x86_64";
+            {
+                nativeArch = name.EndsWith("arm64") ? "arm64" : name.EndsWith("-x86") ? "x86" : "x86_64";
+                if (nativeArch != ctx.Arch) return null;
+            }
             return new McLibrary
             {
                 Name = name, Path = System.IO.Path.Combine(libDir, rel), Url = url,
@@ -539,7 +542,7 @@ public sealed class McInstance : IEquatable<McInstance>
                 }
                 var cls = natives["windows"].String;
                 if (cls == null) continue;
-                cls = cls.Replace("${arch}", "64");
+                cls = cls.Replace("${arch}", ctx.Arch == "x86" ? "32" : "64");
                 var art = lib["downloads"]["classifiers"][cls];
                 var rel = art["path"].String ?? Maven.Path(name, cls) ?? "";
                 var baseUrl = lib["url"].String ?? "https://libraries.minecraft.net/";

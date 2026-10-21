@@ -22,7 +22,10 @@ internal static class LaunchCoordinator
         {
             var game = await Launcher.Launch(instance, account, options, job, new LaunchCallbacks
             {
-                OnWindow = _ => window.DispatcherQueue.TryEnqueue(ApplyVisibility),
+                OnWindow = process => window.DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (process.State == GameProcess.GameState.Running) ApplyVisibility();
+                }),
                 OnExit = process => window.DispatcherQueue.TryEnqueue(async () =>
                 {
                     RestoreVisibility();

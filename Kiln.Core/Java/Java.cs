@@ -11,7 +11,9 @@ public sealed record JavaInfo(string Path, string Version, int Major, string Arc
 
     /// 是否带有基础 CDS 归档（动态 CDS / AOT 缓存依赖它；Mojang 的运行时默认没有）
     public bool HasBaseCDS =>
-        new[] { System.IO.Path.Combine("lib", "server", "classes.jsa"),
+        new[] { System.IO.Path.Combine("bin", "server", "classes.jsa"),
+                System.IO.Path.Combine("bin", "server", "classes_nocoops.jsa"),
+                System.IO.Path.Combine("lib", "server", "classes.jsa"),
                 System.IO.Path.Combine("lib", "server", "classes_nocoops.jsa"),
                 System.IO.Path.Combine("jre", "lib", "server", "classes.jsa") }
         .Any(p => File.Exists(System.IO.Path.Combine(Home, p)));
@@ -23,7 +25,7 @@ public sealed record JavaInfo(string Path, string Version, int Major, string Arc
             var kind = Path.Contains("zulu", StringComparison.OrdinalIgnoreCase) ? "Zulu"
                 : Path.Contains("temurin", StringComparison.OrdinalIgnoreCase) ? "Temurin"
                 : IsMojang ? "Mojang" : "Java";
-            var a = Arch == "arm64" ? "ARM64" : "x64";
+            var a = Arch switch { "arm64" => "ARM64", "x86_64" => "x64", "x86" => "x86", _ => Arch };
             return $"{kind} {Version} ({a})";
         }
     }
@@ -121,9 +123,9 @@ public static class JavaManager
         }
     }
 
-    public static async Task<IReadOnlyList<JavaInfo>> Search()
+    public static async Task<IReadOnlyList<JavaInfo>> Search(CancellationToken cancellationToken = default)
     {
-        var result = await Task.Run(() =>
+        var result = await Task.Run(async () =>
         {
             var paths = new List<string>();
             foreach (var root in SearchRoots()) paths.AddRange(FindJavaBinaries(root));
@@ -135,30 +137,33 @@ public static class JavaManager
             var infos = new List<JavaInfo>();
             foreach (var p in paths)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
                     var real = System.IO.Path.GetFullPath(p);
                     if (!seen.Add(real)) continue;
-                    if (Inspect(real) is { } info) infos.Add(info);
+                    if (await InspectAsync(real, cancellationToken).ConfigureAwait(false) is { } info) infos.Add(info);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch { }
             }
             return infos
                 .OrderByDescending(a => a.Major)
                 .ThenByDescending(a => a.Version, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-        });
+        }, cancellationToken);
         return result;
     }
 
     /// 读取 Java 的版本与架构：优先读 release 文件，否则执行 java -XshowSettings
-    public static JavaInfo? Inspect(string path)
+    public static JavaInfo? Inspect(string path) => InspectAsync(path).GetAwaiter().GetResult();
+    internal static async Task<JavaInfo?> InspectAsync(string path, CancellationToken cancellationToken = default)
     {
         try
         {
             if (!File.Exists(path)) return null;
-            var isMojang = path.StartsWith(Paths.Runtime, StringComparison.OrdinalIgnoreCase)
-                || path.Contains(@"\minecraft\runtime\", StringComparison.OrdinalIgnoreCase);
+            cancellationToken.ThrowIfCancellationRequested();
+            var isMojang = IsUnder(path, Paths.Runtime) || IsUnder(path, System.IO.Path.Combine(Paths.DefaultMinecraft, "runtime"));
             var home = System.IO.Path.GetDirectoryName(System.IO.Path.GetDirectoryName(path)) ?? "";
             var releaseFile = System.IO.Path.Combine(home, "release");
             if (File.Exists(releaseFile))
@@ -173,35 +178,29 @@ public static class JavaManager
                 if (props.TryGetValue("JAVA_VERSION", out var v) && props.TryGetValue("OS_ARCH", out var a))
                     return new JavaInfo(path, v, MajorOf(v), NormalizeArch(a), isMojang);
             }
-            var info = new ProcessStartInfo
-            {
-                FileName = path,
-                Arguments = "-XshowSettings:properties -version",
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            using var p = Process.Start(info);
-            if (p == null) return null;
-            var output = p.StandardError.ReadToEnd() + p.StandardOutput.ReadToEnd();
-            p.WaitForExit();
+            var command = await JavaCommand.Run(path, new[] { "-XshowSettings:properties", "-version" }, TimeSpan.FromSeconds(8), cancellationToken).ConfigureAwait(false);
+            if (command.ExitCode != 0) return null;
+            var output = command.Output;
             string? Prop(string k)
             {
                 foreach (var raw in output.Split('\n'))
                 {
                     var t = raw.Trim();
-                    if (t.StartsWith(k + " = ", StringComparison.Ordinal)) return t[(k.Length + 3)..];
+                    var separator = t.IndexOf('=');
+                    if (separator >= 0 && t[..separator].Trim() == k) return t[(separator + 1)..].Trim();
                 }
                 return null;
             }
             var version = Prop("java.version");
             var arch = Prop("os.arch");
-            if (version == null || arch == null) return null;
+            if (version == null || arch == null || version.Length > 128 || arch.Length > 32 || MajorOf(version) <= 0) return null;
             return new JavaInfo(path, version, MajorOf(version), NormalizeArch(arch), isMojang);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { return null; }
     }
+
+    internal static bool IsUnder(string path, string directory) => System.IO.Path.GetFullPath(path).StartsWith(System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(directory)) + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     public static int MajorOf(string v)
     {
@@ -221,8 +220,13 @@ public static class JavaManager
         return parts[0] == 1 && parts.Count > 1 ? parts[1] : parts[0];
     }
 
-    public static string NormalizeArch(string a) =>
-        a is "aarch64" or "arm64" or "aarch64.dll" ? "arm64" : "x86_64";
+    public static string NormalizeArch(string a) => a.Trim().ToLowerInvariant() switch
+    {
+        "aarch64" or "arm64" or "aarch64.dll" => "arm64",
+        "amd64" or "x64" or "x86_64" => "x86_64",
+        "x86" or "i386" or "i486" or "i586" or "i686" => "x86",
+        var other => other,
+    };
 
     // MARK: 选择
 
@@ -232,11 +236,11 @@ public static class JavaManager
         var need = instance.JavaMajor;
         // 版本独立设置或全局设置中手动指定的 Java
         var manual = instance.Setup.JavaPath ?? LauncherSettings.Shared.JavaPath;
-        if (!string.IsNullOrEmpty(manual) && Inspect(manual) is { } manualInfo)
+        if (!string.IsNullOrEmpty(manual) && await Task.Run(() => InspectAsync(manual, job?.Token ?? default), job?.Token ?? default).ConfigureAwait(false) is { } manualInfo)
         {
             return manualInfo;
         }
-        var all = await Search();
+        var all = await Search(job?.Token ?? default).ConfigureAwait(false);
         List<JavaInfo> Rank(IEnumerable<JavaInfo> list) => list
             .OrderByDescending(a => a.Compatible(need))
             .ThenBy(a => Math.Abs(a.Major - need))
@@ -247,35 +251,25 @@ public static class JavaManager
         if (Rank(all.Where(j => j.Arch == arch && j.Compatible(need))) is { Count: > 0 } best && best[0] is { } b)
         {
             Log.log($"[Java] 选择 {b.Path}（{b.Version}，{b.Arch}）");
-            return Prepared(b);
+            return await Prepared(b, job).ConfigureAwait(false);
         }
         Log.log($"[Java] 没有可用的 Java（需要 {need}，{arch}），开始下载 {instance.JavaComponent}");
         job?.Stage = T.Invoke($"正在下载 Java（{instance.JavaComponent}）", $"Downloading Java ({instance.JavaComponent})");
-        return Prepared(await DownloadRuntime(instance.JavaComponent, arch, job));
+        return await Prepared(await DownloadRuntime(instance.JavaComponent, arch, job).ConfigureAwait(false), job).ConfigureAwait(false);
     }
 
     /// 为启动器管理的运行时生成基础 CDS 归档（Mojang 的运行时默认没有），使类数据共享与 AOT 缓存生效
-    private static JavaInfo Prepared(JavaInfo java)
+    private static async Task<JavaInfo> Prepared(JavaInfo java, Job? job)
     {
         try
         {
-            if (java.HasBaseCDS || java.Major < 11
-                || !java.Path.StartsWith(Paths.Runtime, StringComparison.OrdinalIgnoreCase)) return java;
+            if (!LauncherSettings.Shared.ClassDataSharing || java.HasBaseCDS || java.Major < 11 || !IsUnder(java.Path, Paths.Runtime)) return java;
             var start = DateTime.UtcNow;
-            using var p = Process.Start(new ProcessStartInfo
-            {
-                FileName = java.Path,
-                Arguments = "-Xshare:dump",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-            if (p != null)
-            {
-                p.WaitForExit();
-                Log.log($"[Java] 已生成基础 CDS 归档（{(DateTime.UtcNow - start).TotalSeconds:0.0} 秒）：{java.HasBaseCDS}");
-            }
+            var result = await JavaCommand.Run(java.Path, new[] { "-Xshare:dump" }, TimeSpan.FromSeconds(90), job?.Token ?? default).ConfigureAwait(false);
+            Log.log($"[Java] 基础 CDS 归档（{(DateTime.UtcNow - start).TotalSeconds:0.0} 秒）：exit={result.ExitCode}, ready={java.HasBaseCDS}");
         }
-        catch { }
+        catch (OperationCanceledException) when (job?.Token.IsCancellationRequested == true) { throw; }
+        catch (Exception error) { Log.log("[Java] 无法生成基础 CDS 归档：" + error.Friendly()); }
         return java;
     }
 
@@ -288,7 +282,7 @@ public static class JavaManager
 
     public static async Task<JavaInfo> DownloadRuntime(string component, string arch, Job? job = null)
     {
-        var index = await Net.json(RuntimeIndex, Net.Kind.File);
+        var index = await Net.json(RuntimeIndex, Net.Kind.File, job?.Token ?? default);
         var platform = PlatformKey(arch);
         var entry = index[platform][component][0];
         if (!entry.Exists && arch == "arm64")
@@ -301,7 +295,7 @@ public static class JavaManager
             ?? throw new LauncherException(T.Invoke(
                 $"Mojang 未提供适用于此电脑的 Java 运行时 {component}",
                 $"Mojang does not provide Java runtime {component} for this computer"));
-        var manifest = await Net.json(manifestUrl, Net.Kind.File);
+        var manifest = await Net.json(manifestUrl, Net.Kind.File, job?.Token ?? default);
         var root = System.IO.Path.Combine(Paths.Runtime, component, platform);
         var items = new List<DownloadItem>();
         var executables = new List<string>();

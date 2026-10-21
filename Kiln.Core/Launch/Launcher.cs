@@ -17,11 +17,23 @@ public sealed class GameProcess
     private long _totalLines;
     public long LineRevision { get { lock (_gate) return _lineRevision; } }
     public event Action<GameProcess.GameState>? StateChanged;
+    private readonly object _stateGate = new();
     private GameProcess.GameState _state = GameProcess.GameState.Starting;
     public GameState State
     {
-        get => _state;
-        set { _state = value; StateChanged?.Invoke(value); }
+        get { lock (_stateGate) return _state; }
+        set { lock (_stateGate) _state = value; StateChanged?.Invoke(value); }
+    }
+    internal bool WindowReady(Action<GameProcess> onWindow)
+    {
+        lock (_stateGate)
+        {
+            if (_state != GameState.Starting) return false;
+            _state = GameState.Running;
+        }
+        StateChanged?.Invoke(GameState.Running);
+        onWindow(this);
+        return true;
     }
     /// 由启动器主动结束（不算崩溃）
     public bool Killed { get; set; }
@@ -532,16 +544,13 @@ public static class Launcher
 
         var p = new Process { StartInfo = info, EnableRaisingEvents = true };
         var logWriter = TryOpenWrite(logUrl);
+        var logGate = new object();
         void HandleText(string text)
         {
             if (redactToken != null) text = text.Replace(redactToken, "********");
-            try { logWriter?.Write(System.Text.Encoding.UTF8.GetBytes(text)); logWriter?.Flush(); } catch { }
+            lock (logGate)
+                try { logWriter?.Write(System.Text.Encoding.UTF8.GetBytes(text)); logWriter?.Flush(); } catch { }
             game.Append(text);
-            if (game.State == GameProcess.GameState.Starting && WindowAppeared(text))
-            {
-                game.State = GameProcess.GameState.Running;
-                callbacks.OnWindow(game);
-            }
         }
         p.OutputDataReceived += (_, e) => { if (e.Data != null) HandleText(e.Data + "\n"); };
         p.ErrorDataReceived += (_, e) => { if (e.Data != null) HandleText(e.Data + "\n"); };
@@ -549,7 +558,7 @@ public static class Launcher
         p.Exited += (_, _) =>
         {
             try { p.WaitForExit(); } catch { }
-            try { logWriter?.Dispose(); } catch { }
+            lock (logGate) { try { logWriter?.Dispose(); } catch { } }
             var code = p.ExitCode;
             game.ExitCode = code;
             game.EndedAt = DateTime.UtcNow;
@@ -558,18 +567,28 @@ public static class Launcher
             AddPlayTime(game, instance);
             callbacks.OnExit(game);
         };
-        p.Start();
+        try { p.Start(); }
+        catch { logWriter?.Dispose(); p.Dispose(); throw; }
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
-        // 部分版本没有可识别的日志，20 秒后视为已启动
+        // Log messages and elapsed time do not prove that a Windows game window exists.
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromSeconds(20));
-            if (game.State == GameProcess.GameState.Starting)
+            try
             {
-                game.State = GameProcess.GameState.Running;
-                callbacks.OnWindow(game);
+                while (game.State == GameProcess.GameState.Starting && !p.HasExited)
+                {
+                    p.Refresh();
+                    if (p.MainWindowHandle != IntPtr.Zero && !p.HasExited)
+                    {
+                        game.WindowReady(callbacks.OnWindow);
+                        break;
+                    }
+                    await Task.Delay(200).ConfigureAwait(false);
+                }
             }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
+            { Log.log("[Launch] Window detection: " + error.Message); }
         });
         return game;
     }
@@ -580,9 +599,6 @@ public static class Launcher
         catch { return null; }
     }
 
-    public static bool WindowAppeared(string text) =>
-        new[] { "Setting user:", "LWJGL Version", "Backend library:", "OpenAL initialized", "Sound engine started", "Narrator library" }
-            .Any(t => text.Contains(t));
 }
 
 /// 将 log4j 的 XML 日志（版本 JSON 中 logging 配置的格式）转换为普通文本行
