@@ -14,6 +14,10 @@
                     <SolidColorBrush x:Key="KilnEdge" Color="#1E1E1D" />
                     <SolidColorBrush x:Key="KilnText" Color="#1E1E1D" />
                     <SolidColorBrush x:Key="KilnTextSecondary" Color="#62625E" />
+                    <SolidColorBrush x:Key="KilnTextTertiary" Color="#8E8E89" />
+                    <SolidColorBrush x:Key="KilnGreen" Color="#2F7A24" />
+                    <SolidColorBrush x:Key="KilnRed" Color="#B8322A" />
+                    <SolidColorBrush x:Key="KilnYellow" Color="#9A6B00" />
                     <SolidColorBrush x:Key="KilnAccent" Color="#2449CF" />
                     <SolidColorBrush x:Key="KilnAccentSoft" Color="#DDE5FA" />
                     <SolidColorBrush x:Key="KilnTitleBar" Color="#1E1E1D" />
@@ -30,6 +34,10 @@
                     <SolidColorBrush x:Key="KilnEdge" Color="#55554F" />
                     <SolidColorBrush x:Key="KilnText" Color="#ECECE9" />
                     <SolidColorBrush x:Key="KilnTextSecondary" Color="#A2A29C" />
+                    <SolidColorBrush x:Key="KilnTextTertiary" Color="#6F6F6A" />
+                    <SolidColorBrush x:Key="KilnGreen" Color="#6CBF5A" />
+                    <SolidColorBrush x:Key="KilnRed" Color="#F07167" />
+                    <SolidColorBrush x:Key="KilnYellow" Color="#E2B451" />
                     <SolidColorBrush x:Key="KilnAccent" Color="#8FB3FF" />
                     <SolidColorBrush x:Key="KilnAccentSoft" Color="#27304A" />
                     <SolidColorBrush x:Key="KilnTitleBar" Color="#0F0F0E" />

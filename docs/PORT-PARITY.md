@@ -72,6 +72,16 @@ UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、Inst
 
 ## 必须完成的验证
 
+0.2.16w 任务与滚动控件：
+
+- 对照 `DownloadPage.swift` 的 `TaskManagerPage` / `JobRow` 恢复成功绿色、失败红色、取消次级色及运行中蓝色百分比；百分比按原版截断。保留 `JobCenter` 完成/取消后的统一阶段文字，错误仍显示实际原因，两行溢出使用省略。清除按钮移回列表下方，仅有已结束任务时显示；空态恢复托盘图、13pt 文本、8pt 间距及 50pt 留白。取消使用 28pt 自定义图标按钮。
+- `ProgressBar` 改为 4pt Kiln 轨道/填充，自定义确定、不确定、错误和暂停状态；保留原生范围值、自动化与模板计算，验证实际填充比例、容器缩放、状态颜色、不确定指示器的实际动画及裁切。
+- `ScrollViewer` / `ScrollBar` 改为 Kiln 模板：8pt 滚动区域、6pt 滑块，移除默认箭头外观；保留原生偏移、分页点击、拖动、自动显示和可访问性。页面默认不启用内容缩放。设置、下拉框、文字编辑、Mod/版本及弹窗回归均覆盖该公共模板；深色设置页另以实际鼠标滚轮和拖动滑块确认返回顶部。
+- 任务 UI 对非有限进度值回退为零，避免将 NaN 传入原生进度控件。新增完整链路检查通过真实 `Downloader` 从一次性 loopback HTTP 服务分块下载到临时目录，观察实际任务进度条前进，再点击真实取消按钮确认传输终止、进度收起，最后清理已结束项并检查空态。未安装游戏或接触真实游戏文件。
+- 复测发现原侧栏检查依赖固定 30ms，偶发在 Content 新模板接入前读取，已改为实际布局/控件就绪等待（上限 3 秒），保留原始 50% 宽度断言。最终 140 项核心、149 项 UI 和 17 项 Windows 集成检查全部通过，未处理 UI 异常为零；浅色/深色任务页已查看。最终程序为 `publish/Kiln-v0.2.16w-verified/`，报告 `artifacts/ui-v0.2.16w-final.json` / `artifacts/parity-v0.2.16w-final.txt` / `artifacts/os-v0.2.16w-final.json`。
+- 最终安装包 46,874,574 bytes，SHA-256 `fba388942a2802ca02eb890cfc7a0929bb7abc8839b5954c1a86f22e6954f42c`；ZIP 69,529,716 bytes，SHA-256 `488d1cd6645b29e405ed1f643df6ca4627f2cdb10180c57c59dfebc7c6446ded`。EXE/Core 版本、ZIP 必需运行文件均核对通过，未增加依赖。
+- 新增 `--show-tasks` / `--preview-dark` 仅用于诊断结束后的临时状态预览；不用于真实账号登录或程序更新。全页面视觉、账号及实际游戏/整合包验收、最近版本入口和其余监视功能仍未全部完成，总目标保持未完成。
+
 0.2.15w 设置与自定义控件：
 
 - 按 `SetupPage.swift` / `Theme.swift` 恢复 230pt 名称列、16pt 列间距、13pt 标题和 11.5pt 可见说明。依用户要求，设置的输入/选择/普通操作控件统一 320pt 宽，文字输入、密码、选择和分段选择保持 28pt 高；分段边框改为叠加，避免额外增加两点高度。
@@ -84,7 +94,7 @@ UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、Inst
 - 诊断设置使用独立内存模型，不写实际设置或应用全局语言；诊断窗口也不再写窗口预设或选中版本。140 项核心回归、130 项原生 UI 及 17 项 Windows 集成检查全部通过，三语言/三档窗口遍历五个设置标签；游戏、性能、Java、下载设置与自定义菜单画面已查看。最终发布目录 `publish/Kiln-v0.2.15w-verified/`，报告为 `artifacts/ui-v0.2.15w-final.json`、`artifacts/os-v0.2.15w-final.json` 和 `artifacts/parity-v0.2.15w-final.txt`。
 - 最终安装包 46,864,220 bytes，SHA-256 `fb012cef5fdce9a14a0c347b160a7b0c1630ba5f2b5b0dc8a102962a5e673f44`；便携 ZIP 69,517,998 bytes，SHA-256 `1db1c40758246fb3c49c5653b12327212cb5e5c13b196cf6dc912fa1e2eb2ec2`。EXE 与 Core 版本均为 0.2.15w，ZIP 必需运行文件已核对，未新增 NuGet 依赖。
 - [0.2.15w 正式 Release](https://github.com/Cetirzine/Kiln-Windows/releases/tag/v0.2.15w) 于 2026-10-21 发布，标签指向 `edb3bcc4e26562494340dd7b64790568f66bad0f`。发布前逐一核对四个远端附件的 uploaded 状态、大小及 SHA-256；发布后确认 latest 为该正式版，并以程序更新代码从 0.2.14w 检查：常规路径与官方网页后备均返回 0.2.15w、相同 ZIP 摘要/大小，当前 0.2.15w 不重复提示。报告 `artifacts/updater-discovery-v0.2.15w-final.json`；此检查不执行安装。
-- 仍未覆盖全部页面、滚动条/进度条等所有可见默认模板；完整微软账号、各加载器真实游戏启动和全页视觉 1:1 验收仍未完成，不能据此标记总目标完成。
+- 此轮（0.2.15w）尚未覆盖全部页面、滚动条/进度条等所有可见默认模板；完整微软账号、各加载器真实游戏启动和全页视觉 1:1 验收仍未完成，不能据此标记总目标完成。后续滚动/进度控件验证见上方 0.2.16w。
 
 0.2.14w 自动更新修复与隔离验收：见 [AUTO-UPDATE-VERIFICATION.md](AUTO-UPDATE-VERIFICATION.md)。程序包为 `publish/Kiln-v0.2.14w-verified/`；135 项核心、94 项 UI、17 项系统集成、11 项更新回归与 8 项真实联网替换检查通过。应用内更新弹窗与安装/重启链路分别验证；额外的单次 UI 自动安装测试被审批策略拒绝，不能宣称该项已通过。设置、控件的其余原版对照继续进行，真实游戏与账号验收仍未完成。
 

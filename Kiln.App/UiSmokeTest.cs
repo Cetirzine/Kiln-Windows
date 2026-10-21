@@ -66,7 +66,9 @@ internal static class UiSmokeTest
             Check("100 cancel/install/reopen cycles without orphan controls", true);
             Check("Window remains responsive after popup cancellation", fixture.IsLoaded && root.Size.Width > 0);
             var firstJob = MainWindow.NewJob("Synthetic install progress"); firstJob.FileFraction = .5;
-            window.RefreshJobIndicator(); await Task.Delay(30);
+            window.RefreshJobIndicator(); ((FrameworkElement)root.Content).UpdateLayout();
+            var indicatorWait = System.Diagnostics.Stopwatch.StartNew();
+            while (!Descendants(root.Content).OfType<Border>().Any(b => b.Name == "SidebarJobFill") && indicatorWait.Elapsed < TimeSpan.FromSeconds(3)) { await Task.Delay(16); ((FrameworkElement)root.Content).UpdateLayout(); }
             var fill = Descendants(root.Content).OfType<Border>().Single(b => b.Name == "SidebarJobFill");
             Check("Sidebar switches to an advancing task bar", Math.Abs(fill.Width - 17) < .1);
             var secondJob = MainWindow.NewJob("Synthetic second install"); window.RefreshJobIndicator();
@@ -108,11 +110,14 @@ internal static class UiSmokeTest
             await UpdateUiChecks.Run(window, (name, passed) => Check(name, passed));
             await ControlUiChecks.Run(window, (name, passed) => Check(name, passed));
             await SettingsUiChecks.Run(window, fixtureRoot, (name, passed) => Check(name, passed));
+            await TaskUiChecks.Run(window, fixtureRoot, (name, passed) => Check(name, passed));
             Check("No unhandled UI exceptions during native regression", App.DiagnosticErrors.Count == 0, App.DiagnosticErrors);
             Ui.SelectTab("instance", 0); await Show(new InstanceDetailPage(instance));
             window.Closed += (_, _) => { if (Path.GetFullPath(fixtureRoot).StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) && Directory.Exists(fixtureRoot)) { try { Directory.Delete(fixtureRoot, true); } catch { } } };
             if (Environment.GetCommandLineArgs().Contains("--show-account-scene")) window.ShowDiagnostics(AccountUiChecks.Preview(fixtureRoot));
             if (Environment.GetCommandLineArgs().Contains("--show-settings")) { Ui.SelectTab("setup", 0); await Show(new SetupPage(Kiln.Core.LauncherSettings.Ephemeral())); }
+            if (Environment.GetCommandLineArgs().Contains("--show-tasks")) await Show(TaskUiChecks.Preview());
+            if (Environment.GetCommandLineArgs().Contains("--preview-dark")) ((FrameworkElement)window.Content).RequestedTheme = ElementTheme.Dark;
             window.Title = "Kiln · UI 检查";
         }
         catch (Exception e)

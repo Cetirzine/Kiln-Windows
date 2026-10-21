@@ -167,6 +167,84 @@
             <TextBlock x:Name="KeyboardAcceleratorTextBlock" Grid.Column="1" Text="{TemplateBinding KeyboardAcceleratorTextOverride}" FontSize="11" Foreground="{ThemeResource KilnTextSecondary}" Margin="24,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" />
         </Grid></ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="KilnIconButton" TargetType="Button">
+        <Setter Property="Width" Value="28" /><Setter Property="Height" Value="28" /><Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="0" /><Setter Property="Padding" Value="0" /><Setter Property="Foreground" Value="{ThemeResource KilnTextSecondary}" /><Setter Property="Background" Value="Transparent" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="IconButtonSurface" Background="{TemplateBinding Background}" CornerRadius="2" BorderThickness="1" BorderBrush="Transparent">
+            <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates"><VisualState x:Name="Normal" /><VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="IconButtonSurface.Background" Value="{ThemeResource KilnHover}" /></VisualState.Setters></VisualState><VisualState x:Name="Pressed"><VisualState.Setters><Setter Target="IconButtonSurface.Background" Value="{ThemeResource KilnPanelSecondary}" /></VisualState.Setters></VisualState><VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="IconButtonSurface.Opacity" Value="0.45" /></VisualState.Setters></VisualState></VisualStateGroup><VisualStateGroup x:Name="FocusStates"><VisualState x:Name="Unfocused" /><VisualState x:Name="PointerFocused" /><VisualState x:Name="Focused"><VisualState.Setters><Setter Target="IconButtonSurface.BorderBrush" Value="{ThemeResource KilnAccent}" /></VisualState.Setters></VisualState></VisualStateGroup></VisualStateManager.VisualStateGroups>
+            <ContentPresenter Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+        </Border></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style TargetType="ProgressBar">
+        <Setter Property="MinHeight" Value="4" /><Setter Property="Height" Value="4" /><Setter Property="CornerRadius" Value="0" /><Setter Property="BorderThickness" Value="0" /><Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Foreground" Value="{ThemeResource KilnAccent}" /><Setter Property="Background" Value="{ThemeResource KilnPanelSecondary}" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ProgressBar">
+            <Grid x:Name="LayoutRoot">
+                <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Determinate" /><VisualState x:Name="Updating" />
+                    <VisualState x:Name="Error"><VisualState.Setters><Setter Target="DeterminateProgressBarIndicator.Fill" Value="{ThemeResource KilnRed}" /></VisualState.Setters></VisualState>
+                    <VisualState x:Name="UpdatingError"><VisualState.Setters><Setter Target="DeterminateProgressBarIndicator.Fill" Value="{ThemeResource KilnRed}" /></VisualState.Setters></VisualState>
+                    <VisualState x:Name="Paused"><VisualState.Setters><Setter Target="DeterminateProgressBarIndicator.Fill" Value="{ThemeResource KilnYellow}" /></VisualState.Setters></VisualState>
+                    <VisualState x:Name="Indeterminate"><VisualState.Setters><Setter Target="DeterminateProgressBarIndicator.Opacity" Value="0" /><Setter Target="IndeterminateProgressBarIndicator.Opacity" Value="1" /></VisualState.Setters><Storyboard RepeatBehavior="Forever"><DoubleAnimation Storyboard.TargetName="IndeterminateShift" Storyboard.TargetProperty="TranslateX" From="{Binding TemplateSettings.ContainerAnimationStartPosition, RelativeSource={RelativeSource TemplatedParent}}" To="{Binding TemplateSettings.ContainerAnimationEndPosition, RelativeSource={RelativeSource TemplatedParent}}" Duration="0:0:1.5" /></Storyboard></VisualState>
+                    <VisualState x:Name="IndeterminateError"><VisualState.Setters><Setter Target="DeterminateProgressBarIndicator.Opacity" Value="0" /><Setter Target="IndeterminateProgressBarIndicator.Opacity" Value="1" /><Setter Target="IndeterminateProgressBarIndicator.Fill" Value="{ThemeResource KilnRed}" /></VisualState.Setters></VisualState>
+                    <VisualState x:Name="IndeterminatePaused"><VisualState.Setters><Setter Target="DeterminateProgressBarIndicator.Opacity" Value="0" /><Setter Target="IndeterminateProgressBarIndicator.Opacity" Value="1" /><Setter Target="IndeterminateProgressBarIndicator.Fill" Value="{ThemeResource KilnYellow}" /></VisualState.Setters></VisualState>
+                </VisualStateGroup></VisualStateManager.VisualStateGroups>
+                <Border x:Name="ProgressBarRoot" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}"><Border Clip="{Binding TemplateSettings.ClipRect, RelativeSource={RelativeSource TemplatedParent}}"><Grid>
+                    <Rectangle x:Name="ProgressBarTrack" Fill="{TemplateBinding Background}" />
+                    <Rectangle x:Name="DeterminateProgressBarIndicator" Fill="{TemplateBinding Foreground}" HorizontalAlignment="Left" />
+                    <Rectangle x:Name="IndeterminateProgressBarIndicator" Fill="{TemplateBinding Foreground}" HorizontalAlignment="Left" Opacity="0"><Rectangle.RenderTransform><CompositeTransform x:Name="IndeterminateShift" /></Rectangle.RenderTransform></Rectangle>
+                    <Rectangle x:Name="IndeterminateProgressBarIndicator2" Fill="{TemplateBinding Foreground}" HorizontalAlignment="Left" Opacity="0"><Rectangle.RenderTransform><CompositeTransform /></Rectangle.RenderTransform></Rectangle>
+                </Grid></Border></Border>
+            </Grid>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="KilnScrollPageButton" TargetType="RepeatButton">
+        <Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="0" /><Setter Property="IsTabStop" Value="False" /><Setter Property="AllowFocusOnInteraction" Value="False" /><Setter Property="Interval" Value="50" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="KilnScrollThumb" TargetType="Thumb">
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Thumb"><Border x:Name="ScrollThumbSurface" Background="{ThemeResource KilnTextTertiary}" CornerRadius="1">
+            <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates"><VisualState x:Name="Normal" /><VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="ScrollThumbSurface.Background" Value="{ThemeResource KilnTextSecondary}" /></VisualState.Setters></VisualState><VisualState x:Name="Pressed"><VisualState.Setters><Setter Target="ScrollThumbSurface.Background" Value="{ThemeResource KilnAccent}" /></VisualState.Setters></VisualState><VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="ScrollThumbSurface.Opacity" Value="0.45" /></VisualState.Setters></VisualState></VisualStateGroup></VisualStateManager.VisualStateGroups>
+        </Border></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+        <Setter Property="MinWidth" Value="8" /><Setter Property="MinHeight" Value="8" /><Setter Property="IsTabStop" Value="False" /><Setter Property="Background" Value="Transparent" /><Setter Property="Foreground" Value="{ThemeResource KilnTextTertiary}" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar"><Grid x:Name="KilnScrollRoot" Background="Transparent">
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates"><VisualState x:Name="Normal" /><VisualState x:Name="PointerOver" /><VisualState x:Name="Pressed" /><VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="KilnScrollRoot.Opacity" Value="0.45" /></VisualState.Setters></VisualState></VisualStateGroup>
+                <VisualStateGroup x:Name="ScrollingIndicatorStates"><VisualState x:Name="NoIndicator"><VisualState.Setters><Setter Target="KilnScrollRoot.Opacity" Value="0" /></VisualState.Setters></VisualState><VisualState x:Name="TouchIndicator" /><VisualState x:Name="MouseIndicator" /><VisualState x:Name="MouseIndicatorFull" /></VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+            <Grid x:Name="HorizontalRoot" Height="8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <RepeatButton x:Name="HorizontalSmallDecrease" Width="0" Style="{StaticResource KilnScrollPageButton}" />
+                <RepeatButton x:Name="HorizontalLargeDecrease" Grid.Column="1" Width="0" Style="{StaticResource KilnScrollPageButton}" />
+                <Thumb x:Name="HorizontalThumb" Grid.Column="2" MinWidth="24" Height="6" Style="{StaticResource KilnScrollThumb}" />
+                <RepeatButton x:Name="HorizontalLargeIncrease" Grid.Column="3" Style="{StaticResource KilnScrollPageButton}" />
+                <RepeatButton x:Name="HorizontalSmallIncrease" Grid.Column="4" Width="0" Style="{StaticResource KilnScrollPageButton}" />
+            </Grid>
+            <Grid x:Name="VerticalRoot" Width="8"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <RepeatButton x:Name="VerticalSmallDecrease" Height="0" Style="{StaticResource KilnScrollPageButton}" />
+                <RepeatButton x:Name="VerticalLargeDecrease" Grid.Row="1" Height="0" Style="{StaticResource KilnScrollPageButton}" />
+                <Thumb x:Name="VerticalThumb" Grid.Row="2" MinHeight="24" Width="6" Style="{StaticResource KilnScrollThumb}" />
+                <RepeatButton x:Name="VerticalLargeIncrease" Grid.Row="3" Style="{StaticResource KilnScrollPageButton}" />
+                <RepeatButton x:Name="VerticalSmallIncrease" Grid.Row="4" Height="0" Style="{StaticResource KilnScrollPageButton}" />
+            </Grid>
+        </Grid></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style TargetType="ScrollViewer">
+        <Setter Property="ZoomMode" Value="Disabled" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollViewer"><Grid x:Name="KilnViewportRoot" Background="{TemplateBinding Background}">
+            <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="ScrollingIndicatorStates">
+                <VisualState x:Name="NoIndicator"><VisualState.Setters><Setter Target="VerticalScrollBar.IndicatorMode" Value="None" /><Setter Target="HorizontalScrollBar.IndicatorMode" Value="None" /></VisualState.Setters></VisualState>
+                <VisualState x:Name="TouchIndicator"><VisualState.Setters><Setter Target="VerticalScrollBar.IndicatorMode" Value="TouchIndicator" /><Setter Target="HorizontalScrollBar.IndicatorMode" Value="TouchIndicator" /></VisualState.Setters></VisualState>
+                <VisualState x:Name="MouseIndicator"><VisualState.Setters><Setter Target="VerticalScrollBar.IndicatorMode" Value="MouseIndicator" /><Setter Target="HorizontalScrollBar.IndicatorMode" Value="MouseIndicator" /></VisualState.Setters></VisualState>
+                <VisualState x:Name="MouseIndicatorFull"><VisualState.Setters><Setter Target="VerticalScrollBar.IndicatorMode" Value="MouseIndicator" /><Setter Target="HorizontalScrollBar.IndicatorMode" Value="MouseIndicator" /></VisualState.Setters></VisualState>
+            </VisualStateGroup></VisualStateManager.VisualStateGroups>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <ScrollContentPresenter x:Name="ScrollContentPresenter" Grid.RowSpan="2" Grid.ColumnSpan="2" ContentTemplate="{TemplateBinding ContentTemplate}" Margin="{TemplateBinding Padding}" />
+            <ScrollBar x:Name="VerticalScrollBar" Grid.Column="1" Width="8" Orientation="Vertical" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" Maximum="{TemplateBinding ScrollableHeight}" Value="{TemplateBinding VerticalOffset}" ViewportSize="{TemplateBinding ViewportHeight}" HorizontalAlignment="Right" />
+            <ScrollBar x:Name="HorizontalScrollBar" Grid.Row="1" Height="8" Orientation="Horizontal" Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" Maximum="{TemplateBinding ScrollableWidth}" Value="{TemplateBinding HorizontalOffset}" ViewportSize="{TemplateBinding ViewportWidth}" />
+            <Border Grid.Row="1" Grid.Column="1" Background="{ThemeResource KilnPanelSecondary}" />
+        </Grid></ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style TargetType="MenuFlyoutSeparator"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuFlyoutSeparator"><Border Height="1" Background="{ThemeResource KilnStroke}" Margin="3,4" /></ControlTemplate></Setter.Value></Setter></Style>
     <Style TargetType="ToolTip"><Setter Property="FontSize" Value="11.5" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToolTip"><Border Background="{ThemeResource KilnPanel}" BorderBrush="{ThemeResource KilnEdge}" BorderThickness="1" Padding="8,5"><ContentPresenter Content="{TemplateBinding Content}" Foreground="{ThemeResource KilnText}" /></Border></ControlTemplate></Setter.Value></Setter></Style>
 </ResourceDictionary>
