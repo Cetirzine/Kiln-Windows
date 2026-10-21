@@ -7,8 +7,24 @@ namespace Kiln.App.Pages;
 /// 构建界面用的工具
 internal static class Ui
 {
-    public static Microsoft.UI.Xaml.Media.Brush Brush(string key) =>
-        (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[key];
+    private static readonly Dictionary<string, Microsoft.UI.Xaml.Media.SolidColorBrush> Palette = new();
+    private static ElementTheme _theme = ElementTheme.Default;
+    private static Microsoft.UI.Xaml.Media.SolidColorBrush PaletteSource(string key)
+    {
+        var dark = _theme == ElementTheme.Dark || _theme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark;
+        return (Microsoft.UI.Xaml.Media.SolidColorBrush)((ResourceDictionary)Application.Current.Resources.ThemeDictionaries[dark ? "Default" : "Light"])[key];
+    }
+    public static Microsoft.UI.Xaml.Media.Brush Brush(string key)
+    {
+        if (!Palette.TryGetValue(key, out var brush)) Palette[key] = brush = new(PaletteSource(key).Color);
+        return brush;
+    }
+    internal static void ApplyTheme(ElementTheme theme)
+    {
+        _theme = theme;
+        // Code-built pages share mutable brushes so a system theme change updates existing views.
+        foreach (var (key, brush) in Palette) brush.Color = PaletteSource(key).Color;
+    }
     public static TextBlock Text(string? text, double? size = null, Windows.UI.Text.FontWeight? weight = null)
     {
         var t = new TextBlock { Text = text ?? "", FontSize = size ?? 13, TextWrapping = TextWrapping.Wrap, Foreground = Brush("KilnText") };
@@ -52,25 +68,26 @@ internal static class Ui
     /// 一行设置项：名称在左，控件在右
     public static Grid Setting(string label, FrameworkElement control, string? tooltip = null)
     {
-        var grid = new Grid();
+        var grid = new Grid { Name = "SettingRow" };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(230) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var text = Text(label, 12.5);
-        text.VerticalAlignment = VerticalAlignment.Center;
-        if (tooltip != null) ToolTipService.SetToolTip(text, tooltip);
-        Grid.SetColumn(text, 0);
+        var text = Text(label, 13);
+        var labels = Col(text); labels.Spacing = 3; labels.Padding = new Thickness(0, 5, 0, 0);
+        if (!string.IsNullOrWhiteSpace(tooltip)) { var help = Text(tooltip, 11.5); help.Foreground = Brush("KilnTextSecondary"); labels.Children.Add(help); }
+        Grid.SetColumn(labels, 0);
         Grid.SetColumn(control, 1);
-        grid.Children.Add(text);
+        grid.Children.Add(labels);
         grid.Children.Add(control);
         control.HorizontalAlignment = HorizontalAlignment.Left;
-        if (control is ComboBox or TextBox or NumberBox or Microsoft.UI.Xaml.Controls.Button)
+        control.VerticalAlignment = VerticalAlignment.Top;
+        if (control is ComboBox or TextBox or PasswordBox or NumberBox or Microsoft.UI.Xaml.Controls.Button)
         {
             control.Width = 320;
             control.MinWidth = 0;
             control.MaxWidth = 320;
         }
-        grid.ColumnSpacing = 12;
-        grid.Margin = new Thickness(0, 8, 0, 8);
+        grid.ColumnSpacing = 16;
+        grid.Margin = new Thickness(0, 2, 0, 2);
         return grid;
     }
 
@@ -79,7 +96,7 @@ internal static class Ui
         var combo = new ComboBox { MinWidth = 220 };
         foreach (var i in items) combo.Items.Add(i);
         combo.SelectedIndex = selected;
-        combo.SelectionChanged += (_, _) => onChange(combo.SelectedIndex);
+        combo.SelectionChanged += (_, _) => { if (combo.SelectedIndex >= 0) onChange(combo.SelectedIndex); };
         return combo;
     }
 
@@ -99,8 +116,8 @@ internal static class Ui
 
     public static NumberBox Num(double value, double min, double max, double step, Action<double> onChange)
     {
-        var n = new NumberBox { Value = value, Minimum = min, Maximum = max, SmallChange = step, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact, MinWidth = 160 };
-        n.ValueChanged += (_, _) => onChange(n.Value);
+        var n = new NumberBox { Value = value, Minimum = min, Maximum = max, SmallChange = step, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline, MinWidth = 160 };
+        n.ValueChanged += (_, _) => { if (double.IsFinite(n.Value)) onChange(n.Value); };
         return n;
     }
 
@@ -147,7 +164,7 @@ internal static class Ui
     {
         var body = Col(children); body.Spacing = 12; body.Padding = new Thickness(16);
         var titleText = Text(title, 12.5, FontWeights.SemiBold);
-        titleText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
+        titleText.Foreground = Brush("KilnTitleText");
         titleText.VerticalAlignment = VerticalAlignment.Center;
         titleText.TextWrapping = TextWrapping.NoWrap; titleText.TextTrimming = TextTrimming.CharacterEllipsis;
         var headerGrid = new Grid { ColumnSpacing = 12 };
@@ -157,12 +174,12 @@ internal static class Ui
         var trailing = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, RequestedTheme = ElementTheme.Dark };
         foreach (var action in actions) trailing.Children.Add(action);
         Grid.SetColumn(trailing, 1); headerGrid.Children.Add(trailing);
-        var header = new Border { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black), MinHeight = 30, Padding = new Thickness(12, actions.Count == 0 ? 0 : 4, 6, actions.Count == 0 ? 0 : 4), Child = headerGrid };
+        var header = new Border { Background = Brush("KilnTitleBar"), MinHeight = 30, Padding = new Thickness(12, actions.Count == 0 ? 0 : 4, 6, actions.Count == 0 ? 0 : 4), Child = headerGrid };
         if (title.Length == 0) header.Visibility = Visibility.Collapsed;
         var stack = Col(header, body); stack.Spacing = 0;
         var surface = new Border { Background = Brush("KilnPanel"), BorderBrush = Brush("KilnEdge"), BorderThickness = new Thickness(1.5), Child = stack };
         var root = new Grid { Margin = new Thickness(0, 0, 3, 3) };
-        root.Children.Add(new Border { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(56, 30, 30, 29)), Translation = new System.Numerics.Vector3(3, 3, 0) });
+        root.Children.Add(new Border { Background = Brush("KilnHardShadow"), Translation = new System.Numerics.Vector3(3, 3, 0) });
         root.Children.Add(surface); return root;
     }
 
@@ -256,15 +273,16 @@ internal static class Ui
             for (var i = 0; i < buttons.Count; i++)
             {
                 var selected = i == selection.SelectedIndex;
-                buttons[i].Background = selected ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 30, 30, 29)) : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
-                buttons[i].Foreground = selected ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White) : Brush("KilnTextSecondary");
+                buttons[i].Background = selected ? Brush("KilnTitleBar") : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                buttons[i].Foreground = selected ? Brush("KilnTitleText") : Brush("KilnTextSecondary");
                 buttons[i].FontWeight = selected ? FontWeights.SemiBold : FontWeights.Normal;
-                if (i > 0) dividers[i - 1].Opacity = 1;
+                if (i > 0) dividers[i - 1].Opacity = i == selection.SelectedIndex || i - 1 == selection.SelectedIndex ? 0 : 1;
             }
         }
         selection.SelectionChanged += (_, _) => Update(); Update();
         grid.HorizontalAlignment = segmentWidth == null ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        return new Border { BorderBrush = Brush("KilnStroke"), BorderThickness = new Thickness(1), Child = grid, HorizontalAlignment = segmentWidth == null ? HorizontalAlignment.Stretch : HorizontalAlignment.Left };
+        var surface = new Grid { Height = 28, HorizontalAlignment = segmentWidth == null ? HorizontalAlignment.Stretch : HorizontalAlignment.Left };
+        surface.Children.Add(grid); surface.Children.Add(new Border { BorderBrush = Brush("KilnStroke"), BorderThickness = new Thickness(1), IsHitTestVisible = false }); return surface;
     }
 
     public static Border SearchField(TextBox input)

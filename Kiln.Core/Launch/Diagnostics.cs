@@ -158,12 +158,13 @@ public static class Diagnostics
         }
     }
 
-    public static long TotalPhysicalGB
+    public static double PhysicalMemoryGB
     {
         get
         {
             var (info, _) = MemoryStatus.Query();
-            return (long)(info?.UllTotalPhys ?? 0) / 1024 / 1024 / 1024;
+            return (info?.UllTotalPhys ?? 0) / 1024d / 1024 / 1024;
         }
     }
+    public static long TotalPhysicalGB => (long)PhysicalMemoryGB;
 }

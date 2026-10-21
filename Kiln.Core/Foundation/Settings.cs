@@ -33,12 +33,17 @@ public sealed class LauncherSettings
 
     private readonly object _gate = new();
     private readonly JsonObject _store;
-    private readonly string _file = Path.Combine(Paths.Support, "settings.json");
+    private readonly string? _file;
+    private readonly bool _applyLanguage;
+    /// Independent settings instance; it never reads or saves a settings file or applies its language globally.
+    public static LauncherSettings Ephemeral() => new(null, false);
 
     private static readonly JsonSerializerOptions FileOptions = new() { WriteIndented = true };
 
-    private LauncherSettings()
+    private LauncherSettings() : this(Path.Combine(Paths.Support, "settings.json"), true) { }
+    private LauncherSettings(string? file, bool applyLanguage)
     {
+        _file = file; _applyLanguage = applyLanguage;
         JsonObject? loaded = null;
         try
         {
@@ -96,7 +101,7 @@ public sealed class LauncherSettings
         _pcl2TakenOver = GetBool("pcl2TakenOver", false);
         _pcl2Root = GetString("pcl2Root", "");
 
-        Localizer.Shared.Language = Language;
+        if (_applyLanguage) Localizer.Shared.Language = Language;
     }
 
     // MARK: 存取
@@ -125,7 +130,15 @@ public sealed class LauncherSettings
 
     private long GetInt(string key, long def)
     {
-        try { var v = Raw(key); if (v != null) return (long?)v ?? def; }
+        try
+        {
+            if (Raw(key) is JsonValue number)
+            {
+                if (number.TryGetValue<long>(out var integer)) return integer;
+                if (number.TryGetValue<int>(out var small)) return small;
+                if (number.TryGetValue<double>(out var value) && double.IsFinite(value) && value >= long.MinValue && value < long.MaxValue) return (long)value;
+            }
+        }
         catch { }
         return def;
     }
@@ -181,6 +194,7 @@ public sealed class LauncherSettings
 
     private void Save()
     {
+        if (_file == null) return;
         try
         {
             var tmp = _file + ".tmp";
@@ -199,7 +213,7 @@ public sealed class LauncherSettings
     public AppLanguage Language
     {
         get => _language;
-        set { _language = value; Set("language", value.RawValue()); Localizer.Shared.Language = value; }
+        set { _language = value; Set("language", value.RawValue()); if (_applyLanguage) Localizer.Shared.Language = value; }
     }
 
     private string _minecraftFolder;

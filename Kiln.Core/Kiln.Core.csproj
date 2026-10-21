@@ -4,8 +4,8 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.2.14</Version>
-    <InformationalVersion>0.2.14w</InformationalVersion>
+    <Version>0.2.15</Version>
+    <InformationalVersion>0.2.15w</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <NoWarn>$(NoWarn);NU1701</NoWarn>
   </PropertyGroup>

@@ -98,7 +98,7 @@ public sealed partial class MainWindow : Window
     public void ApplyWindowPreset(int preset)
     {
         preset = Math.Clamp(preset, 0, 2);
-        LauncherSettings.Shared.LauncherWindowPreset = preset;
+        if (!IsDiagnostics) LauncherSettings.Shared.LauncherWindowPreset = preset;
         var (width, height) = preset switch { 0 => (920, 620), 2 => (1200, 800), _ => (1040, 680) };
         var scale = Shell.XamlRoot?.RasterizationScale ?? 1;
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
@@ -131,7 +131,7 @@ public sealed partial class MainWindow : Window
     {
         SetCaptionBackdrop();
         _detailInstance = instance;
-        LauncherSettings.Shared.SelectedInstance = instance.Name;
+        if (!IsDiagnostics) LauncherSettings.Shared.SelectedInstance = instance.Name;
         RootFrame.Content = new Border { Padding = new Thickness(28, 48, 28, 24), Child = new InstanceDetailPage(instance) };
     }
 
@@ -148,6 +148,7 @@ public sealed partial class MainWindow : Window
         Current = this;
         _ = LauncherSettings.Shared; // Load the saved language before constructing any labels.
         InitializeComponent();
+        Ui.ApplyTheme(Shell.ActualTheme);
         IsDiagnostics = diagnostics;
         try { _taskbar = new TaskbarProgress(WinRT.Interop.WindowNative.GetWindowHandle(this)); }
         catch (Exception e) { Log.log("[Taskbar] " + e.Friendly()); }
@@ -158,7 +159,7 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(DragRegion);
         ApplyCaptionContrast();
-        Shell.ActualThemeChanged += (_, _) => ApplyCaptionContrast();
+        Shell.ActualThemeChanged += (_, _) => { Ui.ApplyTheme(Shell.ActualTheme); ApplyCaptionContrast(); };
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         Title = "Kiln";
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1040, 680));

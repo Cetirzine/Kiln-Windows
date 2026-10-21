@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.2.14w"
+  #define AppVersion "0.2.15w"
 #endif
 #ifndef AppSource
   #define AppSource "..\publish\Kiln-v" + AppVersion
@@ -29,8 +29,8 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 CloseApplications=yes
 RestartApplications=no
-VersionInfoVersion=0.2.14.0
-VersionInfoProductVersion=0.2.14.0
+VersionInfoVersion=0.2.15.0
+VersionInfoProductVersion=0.2.15.0
 VersionInfoProductName=Kiln
 VersionInfoDescription=Kiln for Windows Installer
 

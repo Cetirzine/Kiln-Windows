@@ -29,7 +29,7 @@ macOS / Apple Silicon / ARM64 专属优化不移植：Metal、Rosetta、LWJGL ar
 | ModpackUI.swift | 缺手动自动收集、元数据及导出文件选择 | 已补导出名称/版本/简介、逐项选择、个人数据默认不选、大小/目录标记；安装确认显示格式/游戏/加载器/文件数并实时校验名称；手动下载按两秒任务循环收集、显示等待数量和完成状态。原生 UI 与实际生成 mrpack、真实 Mod 链接导出通过；完整远端整合包安装仍需验收 |
 | AccountUI.swift / HomePage.swift | 微软皮肤/披风、皮肤库无入口，离线改名/顺序/重新登录缺失 | 已补 UI 入口与服务接线，微软账号实际登录/皮肤上传/改名仍需真实账号环境验收 |
 | ProfileSheet | 改名可用性检查存在过期响应、对话框嵌套风险 | 已加代次检查、可用状态控制按钮与自定义弹窗；待交互验收 |
-| SetupPage.swift | 缺五标签、Java 管理、额外参数等；控件列不齐 | 已重写五标签与缺失设置，统一 230pt 名称列 / 320pt 控件；待复测 |
+| SetupPage.swift | 缺五标签、Java 管理、说明、分配条与条件选项；控件列不齐 | 0.2.15w 补齐自动/手动内存条与滑块、条件窗口尺寸、下载并发滑块、可见说明、清理缓存；Java 支持可执行文件/JDK 文件夹。五标签、三语言、三档窗口的控件对齐与交互原生检查通过；完整游戏行为仍待验收 |
 | SystemIntegration.swift | 启动链接丢失存档/服务器参数，重复打开创建新窗口，快捷方式覆盖同名文件且无实例图标；缺真实通知、任务进度、最近版本菜单 | 已补链接统一解析、单实例转交与窗口恢复、原生 .lnk/实例图标/同名避让、右下角轻提示、原生通知及任务栏进度/数量角标；通知弹出和点击返回任务页由用户确认，最近版本入口仍待补 |
 | Updater.swift | 失败替换仍误报成功、删除旧备份；特殊路径无法重启；断流无闲置超时，匿名 API 限流后无法检查 | 0.2.14w 修复回滚、唯一目录/脚本、字面路径及后台校验，新增超时重试和官方发布页后备；真实隔离副本下载、校验、替换、重启已通过，弹窗三个动作分别验证。额外的应用内按钮自动安装被审批策略拒绝，边界与报告见 AUTO-UPDATE-VERIFICATION.md |
 | FolderWatcher.swift | 原版外部文件变更刷新；Windows 无统一实现 | 已给版本列表/Mod 管理增加监视，其他页面待补 |
@@ -71,6 +71,19 @@ macOS / Apple Silicon / ARM64 专属优化不移植：Metal、Rosetta、LWJGL ar
 UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、InstanceContent、AccountUI、SetupPage、AboutPage、ImportUI、ModpackUI、IconPicker、BlockIcon、BlockTextures、DotScene/Classic/Drops/Versions、LogoMark。App 层：KilnApp、Intents、SystemIntegration、FolderWatcher、Snapshot、SelfTest、Main。
 
 ## 必须完成的验证
+
+0.2.15w 设置与自定义控件：
+
+- 按 `SetupPage.swift` / `Theme.swift` 恢复 230pt 名称列、16pt 列间距、13pt 标题和 11.5pt 可见说明。依用户要求，设置的输入/选择/普通操作控件统一 320pt 宽，文字输入、密码、选择和分段选择保持 28pt 高；分段边框改为叠加，避免额外增加两点高度。
+- 自动内存隐藏手动滑块，恢复 8pt 分配条及容量说明；自动模式保留原版的四分之一示意比例，手动模式按实际分配更新。Windows 显示物理内存，不引入 Apple 统一内存或 ARM 优化。自定义游戏尺寸只在对应模式出现，切换模式不丢失已填尺寸。
+- 性能页恢复 GC 分段选择、CDS/紧凑对象头/快速校验说明；下载页恢复并发滑块及对齐的密钥操作。清理缓存只清理缓存目录内容、保留目录；任务/游戏运行中及游戏目录位于缓存内时拒绝清理。测试仅清理临时夹具。
+- Java 列表按原版补选中浅蓝底、3pt 左标记、26pt 图标位、13pt 标题/11.5pt 路径与两行说明；保留用户要求的右侧对勾，选中背景覆盖移除按钮所在整行。支持 JDK 文件夹及 java.exe/javaw.exe，并明确显示选择器用途。
+- 新增 Kiln 输入框、密码框、下拉框与下拉项、数字步进器、滑块、文字编辑菜单、工具提示模板。保留原生编辑、标题/描述、选择、数值范围及自动化能力；密码菜单仅提供粘贴。测试不读写用户剪贴板。原生下拉选择与实际鼠标选择均检查；重复开关 12 次无残留弹层。
+- 新增界面检查发现空 Description 留白使文本框变成 32pt，已消除该额外留白。核心检查发现 JsonValue<int> 不能按 long 直接读取，导致刚保存的窗口预设回退默认值，已兼容内存及解析后的数字存储类型。
+- 已创建页面的代码绘制颜色改用可更新的主题画笔，深浅色切换同步更新文字和卡片；恢复原版标题栏、标题文字、选中底色和硬阴影色。原生模板继续使用 ThemeResource。按钮按下位移修为原版 2pt。
+- 诊断设置使用独立内存模型，不写实际设置或应用全局语言；诊断窗口也不再写窗口预设或选中版本。140 项核心回归、130 项原生 UI 及 17 项 Windows 集成检查全部通过，三语言/三档窗口遍历五个设置标签；游戏、性能、Java、下载设置与自定义菜单画面已查看。最终发布目录 `publish/Kiln-v0.2.15w-verified/`，报告为 `artifacts/ui-v0.2.15w-final.json`、`artifacts/os-v0.2.15w-final.json` 和 `artifacts/parity-v0.2.15w-final.txt`。
+- 最终安装包 46,864,220 bytes，SHA-256 `fb012cef5fdce9a14a0c347b160a7b0c1630ba5f2b5b0dc8a102962a5e673f44`；便携 ZIP 69,517,998 bytes，SHA-256 `1db1c40758246fb3c49c5653b12327212cb5e5c13b196cf6dc912fa1e2eb2ec2`。EXE 与 Core 版本均为 0.2.15w，ZIP 必需运行文件已核对，未新增 NuGet 依赖。
+- 仍未覆盖全部页面、滚动条/进度条等所有可见默认模板；完整微软账号、各加载器真实游戏启动和全页视觉 1:1 验收仍未完成，不能据此标记总目标完成。
 
 0.2.14w 自动更新修复与隔离验收：见 [AUTO-UPDATE-VERIFICATION.md](AUTO-UPDATE-VERIFICATION.md)。程序包为 `publish/Kiln-v0.2.14w-verified/`；135 项核心、94 项 UI、17 项系统集成、11 项更新回归与 8 项真实联网替换检查通过。应用内更新弹窗与安装/重启链路分别验证；额外的单次 UI 自动安装测试被审批策略拒绝，不能宣称该项已通过。设置、控件的其余原版对照继续进行，真实游戏与账号验收仍未完成。
 

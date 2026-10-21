@@ -9,7 +9,7 @@ namespace Kiln.App;
 internal static class KilnFileBrowser
 {
     private static string _lastFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-    public static async Task<string[]> Pick(bool folders, bool save, bool multiple, IReadOnlyList<string> filters, string name = "", bool allowFolders = false)
+    public static async Task<string[]> Pick(bool folders, bool save, bool multiple, IReadOnlyList<string> filters, string name = "", bool allowFolders = false, string? title = null)
     {
         var root = App.MainAppWindow!.Content.XamlRoot;
         var path = new TextBox { Text = Directory.Exists(_lastFolder) ? _lastFolder : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -57,7 +57,7 @@ internal static class KilnFileBrowser
         Navigate(current);
         while (true)
         {
-            var dialog = new KilnDialog { XamlRoot = root, PreferredWidth = 680, Title = save ? Localization.T("另存为", "Save as") : allowFolders ? Localization.T("选择文件夹或压缩包", "Choose folder or archive") : folders ? Localization.T("选择文件夹", "Choose a folder") : Localization.T("选择文件", "Choose files"), Content = body, PrimaryButtonText = save ? Localization.T("保存", "Save") : Localization.T("选择", "Choose"), CloseButtonText = Localization.T("取消", "Cancel") };
+            var dialog = new KilnDialog { XamlRoot = root, PreferredWidth = 680, Title = title ?? (save ? Localization.T("另存为", "Save as") : allowFolders ? Localization.T("选择文件夹或压缩包", "Choose folder or archive") : folders ? Localization.T("选择文件夹", "Choose a folder") : Localization.T("选择文件", "Choose files")), Content = body, PrimaryButtonText = save ? Localization.T("保存", "Save") : Localization.T("选择", "Choose"), CloseButtonText = Localization.T("取消", "Cancel") };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return Array.Empty<string>();
             var selected = list.SelectedItems.OfType<ListViewItem>().Select(i => i.Tag as string).Where(p => p != null).Cast<string>().ToArray();
             if (save)
