@@ -4,97 +4,81 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Kiln.App.Pages;
 
-public sealed class ImportPage : Page
+public static class ImportPage
 {
-    private readonly StackPanel _list = new() { Spacing = 8 };
-    private readonly TextBlock _status = Ui.Text("", 12);
-    private bool _alive;
+    public enum InstallResult { Cancelled, Failed, Installed }
     private static string T(string zh, string en) => Localization.T(zh, en);
-    public ImportPage()
+    private static bool _showing;
+    public static async Task ShowDialog(XamlRoot root)
     {
-        Content = Ui.Scroll(Ui.Header(T("从其他启动器导入", "Import from other launchers")),
-            Ui.Card(T("选择来源", "Choose a source"), Ui.Row(
-                Ui.Button(T("选择实例文件夹…", "Choose instance folder…"), async (_, _) => await ChooseFolder()),
-                Ui.Button(T("选择实例压缩包…", "Choose instance archive…"), async (_, _) => await ChooseArchive()),
-                Ui.Button(T("安装整合包文件…", "Install modpack file…"), async (_, _) => await ChooseModpack(XamlRoot)),
-                Ui.Button(T("从 PCL2 继承配置…", "Inherit PCL2 settings…"), async (_, _) => await App.Pcl2TakeOverDialog(MainWindow.Current!, true)))),
-            _status, Ui.Card(T("自动发现", "Discovered instances"), _list));
-        Loaded += async (_, _) => { _alive = true; await Discover(); }; Unloaded += (_, _) => _alive = false;
-    }
-    private async Task Discover()
-    {
-        _status.Text = T("正在查找其他启动器…", "Looking for other launchers…");
+        if (_showing) return; _showing = true;
+        var ownsGuard = true;
+        LauncherImportForm? form = null;
+        IReadOnlyList<LauncherImport.Candidate> selected = Array.Empty<LauncherImport.Candidate>();
         try
         {
-            var candidates = await Task.Run(() => LauncherImport.Discover()); if (!_alive) return;
-            _list.Children.Clear();
-            foreach (var candidate in candidates)
+            form = new LauncherImportForm(); string? modpack = null;
+            var dialog = new KilnDialog { XamlRoot = root, Title = T("从其他启动器导入", "Import from other launchers"), Content = form, LeadingContent = form.ChooseButton, PreferredWidth = 560, SheetLayout = true, PrimaryButtonText = T("导入", "Import"), CloseButtonText = T("取消", "Cancel"), IsPrimaryButtonEnabled = false, DefaultButton = ContentDialogButton.Primary };
+            form.Changed += () => { var count = form.Selected.Count; dialog.IsPrimaryButtonEnabled = count > 0; dialog.PrimaryButtonText = count == 0 ? T("导入", "Import") : T($"导入（{count}）", $"Import ({count})"); };
+            form.ModpackRequested += path => { modpack = path; dialog.Hide(); };
+            var result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.Primary) selected = form.Selected;
+            await form.Stop(selected);
+            _showing = false; ownsGuard = false;
+            if (modpack != null) { await InstallModpack(root, modpack); return; }
+            if (selected.Count == 0) return;
+            var folder = LauncherSettings.Shared.MinecraftFolder;
+            var plan = LauncherImport.Plan(selected, folder);
+            MainWindow.Current!.NavigateTo("jobs");
+            await Task.WhenAll(plan.Select(async item =>
             {
-                var summary = Ui.Col(Ui.Text(candidate.Name + " · " + candidate.Source.DisplayName(), 13, FontWeights.SemiBold), Ui.Text(candidate.Unsupported ?? candidate.Summary + (candidate.Warning == null ? "" : "\n" + candidate.Warning), 11.5));
-                var import = Ui.Button(T("导入…", "Import…"), async (_, _) => await Import(candidate)); import.IsEnabled = candidate.Unsupported == null;
-                _list.Children.Add(Ui.Row(summary, import));
-            }
-            _status.Text = candidates.Count == 0 ? T("没有自动发现实例，也可以手动选择文件夹或压缩包。", "No instances discovered. Choose a folder or archive manually.") : "";
+                var job = MainWindow.NewJob(T($"导入 {item.Name}", $"Import {item.Name}"));
+                try { await Task.Run(() => LauncherImport.Run(item.Candidate, item.Name, folder, job)); job.State = Job.JobState.Success; }
+                catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; }
+                catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); }
+            }));
         }
-        catch (Exception e) { if (_alive) _status.Text = e.Friendly(); }
-    }
-    private async Task ChooseFolder()
-    {
-        var picker = new KilnFolderPicker();  picker.FileTypeFilter.Add("*");
-        var folder = await picker.PickSingleFolderAsync(); if (folder == null) return;
-        try { var candidate = LauncherImport.Inspect(folder.Path) ?? throw new LauncherException(T("无法识别这个实例文件夹", "This instance folder wasn't recognized")); await Import(candidate); }
-        catch (Exception e) { await Ui.ShowError(XamlRoot, e); }
-    }
-    private async Task ChooseArchive()
-    {
-        var picker = new KilnFileOpenPicker();  picker.FileTypeFilter.Add(".zip");
-        var file = await picker.PickSingleFileAsync(); if (file == null) return;
-        try { await Import(LauncherImport.InspectArchive(file.Path)); } catch (Exception e) { await Ui.ShowError(XamlRoot, e); }
-    }
-    private async Task Import(LauncherImport.Candidate candidate)
-    {
-        if (candidate.Unsupported != null) { await Ui.ShowError(XamlRoot, candidate.Unsupported); return; }
-        var (ok, name) = await Ui.Prompt(XamlRoot, T("导入版本", "Import instance"), T("版本名称", "Instance name"), LauncherImport.AvailableName(candidate.Name, LauncherSettings.Shared.MinecraftFolder));
-        if (!ok) return;
-        var job = MainWindow.NewJob(T($"导入 {name}", $"Import {name}"));
-        try { await LauncherImport.Run(candidate, name, LauncherSettings.Shared.MinecraftFolder, job); job.State = Job.JobState.Success; _status.Text = T("导入完成", "Imported"); }
-        catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; }
-        catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); await Ui.ShowError(XamlRoot, e); }
+        catch (Exception e) { await Ui.ShowError(root, e); }
+        finally { if (form != null) await form.Stop(selected); if (ownsGuard) _showing = false; }
     }
     public static async Task ChooseModpack(XamlRoot root)
     {
         var picker = new KilnFileOpenPicker();  picker.FileTypeFilter.Add(".mrpack"); picker.FileTypeFilter.Add(".zip");
         var file = await picker.PickSingleFileAsync(); if (file != null) await InstallModpack(root, file.Path);
     }
-    public static async Task InstallModpack(XamlRoot root, string archive)
+    public static async Task<InstallResult> InstallModpack(XamlRoot root, string archive)
     {
         Job? job = null;
         try
         {
-            var info = Modpack.Inspect(archive);
-            var (ok, name) = await Ui.Prompt(root, T($"安装整合包 {info.Name}", $"Install modpack {info.Name}"), T("版本名称", "Instance name"), LauncherImport.AvailableName(info.Name, LauncherSettings.Shared.MinecraftFolder)); if (!ok) return;
+            var info = await Task.Run(() => Modpack.Inspect(archive));
+            var form = new ModpackInstallForm(info, LauncherSettings.Shared.MinecraftFolder);
+            var dialog = new KilnDialog { XamlRoot = root, Title = T("安装整合包", "Install modpack"), Content = form, PreferredWidth = 480, SheetLayout = true, InitialFocus = form.InitialFocus, PrimaryButtonText = T("安装", "Install"), CloseButtonText = T("取消", "Cancel"), IsPrimaryButtonEnabled = form.IsValid, DefaultButton = ContentDialogButton.Primary };
+            form.ValidationChanged += () => dialog.IsPrimaryButtonEnabled = form.IsValid;
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return InstallResult.Cancelled;
+            var name = form.InstanceName;
             job = MainWindow.NewJob(T($"安装 {info.Name}", $"Install {info.Name}"));
-            var manual = await Modpack.Install(archive, name, LauncherSettings.Shared.MinecraftFolder, job);
+            MainWindow.Current!.NavigateTo("jobs");
+            var folder = LauncherSettings.Shared.MinecraftFolder;
+            var manual = await Task.Run(() => Modpack.Install(archive, name, folder, job));
+            LauncherSettings.Shared.SelectedInstance = name;
             job.State = Job.JobState.Success;
             await ManualDownloads(root, manual);
+            return InstallResult.Installed;
         }
-        catch (OperationCanceledException) { if (job != null) job.State = Job.JobState.Cancelled; }
-        catch (Exception e) { if (job != null) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); } await Ui.ShowError(root, e); }
+        catch (OperationCanceledException) { if (job != null) job.State = Job.JobState.Cancelled; return InstallResult.Cancelled; }
+        catch (Exception e) { if (job != null) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); } await Ui.ShowError(root, e); return InstallResult.Failed; }
     }
     private static async Task ManualDownloads(XamlRoot root, IReadOnlyList<Modpack.ManualFile> files)
     {
-        var remaining = Modpack.CollectManualDownloads(files);
-        while (remaining.Count > 0)
-        {
-            var panel = new StackPanel { Spacing = 10 };
-            panel.Children.Add(Ui.Text(T("作者禁止第三方下载的文件需手动获取，下载后点击重新检查。", "These files need manual downloads. Download them, then check again."), 12));
-            foreach (var file in remaining)
-            {
-                var button = Ui.Button(file.Title, async (_, _) => { if (file.PageUrl is { } page) await Windows.System.Launcher.LaunchUriAsync(new Uri(page)); }); panel.Children.Add(button);
-            }
-            var dialog = new KilnDialog { XamlRoot = root, Title = T("需要手动下载", "Manual downloads required"), Content = new ScrollViewer { Content = panel, MaxHeight = 340 }, PrimaryButtonText = T("重新检查下载文件夹", "Check Downloads again"), CloseButtonText = T("稍后处理", "Later") };
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-            remaining = Modpack.CollectManualDownloads(remaining);
-        }
+        if (files.Count == 0) return;
+        var remaining = await Task.Run(() => Modpack.CollectManualDownloads(files)); if (remaining.Count == 0) return;
+        var form = new ManualDownloadsForm(remaining);
+        var dialog = new KilnDialog { XamlRoot = root, Title = "", Content = form, LeadingContent = form.Actions, PreferredWidth = 520, SheetLayout = true, CloseButtonText = T("稍后再说", "Later") };
+        form.Changed += () => dialog.CloseButtonText = form.RemainingCount == 0 ? T("完成", "Done") : T("稍后再说", "Later");
+        dialog.Closing += form.Stop;
+        var shown = dialog.ShowAsync();
+        form.Start();
+        try { await shown; } finally { form.Stop(); }
     }
 }

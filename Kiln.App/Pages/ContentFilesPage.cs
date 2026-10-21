@@ -23,9 +23,9 @@ public sealed class ContentFilesPage : UserControl
         if (kind != "screenshots")
         {
             actions.Add(Ui.Button(T("添加文件…", "Add files…"), async (_, _) => await Add()));
-            actions.Add(Ui.Button(T("下载…", "Download…"), (_, _) => { LauncherSettings.Shared.SelectedInstance = _instance.Name; MainWindow.Current!.NavigateTo(kind == "shaderpacks" ? "shaders" : "resourcepacks"); }));
+            actions.Add(Ui.Button(kind == "shaderpacks" ? T("下载光影", "Download shaders") : T("下载资源包", "Download resource packs"), (_, _) => { LauncherSettings.Shared.SelectedInstance = _instance.Name; MainWindow.Current!.NavigateTo(kind == "shaderpacks" ? "shaders" : "resourcepacks"); }));
         }
-        actions.Add(Ui.Button(T("打开文件夹", "Open folder"), async (_, _) => { Directory.CreateDirectory(Folder); await Windows.System.Launcher.LaunchFolderPathAsync(Folder); }));
+        actions.Add(InstanceCardUi.IconButton("\uE8B7", T("打开文件夹", "Open folder"), async (_, _) => { Directory.CreateDirectory(Folder); await Windows.System.Launcher.LaunchFolderPathAsync(Folder); }));
         _actions = actions.ToArray(); Reload(); Loaded += (_, _) => Reload();
         AllowDrop = kind != "screenshots";
         DragOver += (_, e) => e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
@@ -40,7 +40,8 @@ public sealed class ContentFilesPage : UserControl
     {
         _list.Children.Clear();
         // Reuse the existing card/header so action controls never change visual parents.
-        var files = Directory.Exists(Folder) ? Directory.GetFileSystemEntries(Folder).Where(file => !Path.GetFileName(file).StartsWith('.') && (_kind == "screenshots" ? new[] { ".png", ".jpg", ".jpeg" }.Contains(Path.GetExtension(file).ToLowerInvariant()) : !file.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))).OrderByDescending(File.GetLastWriteTime).ToList() : new List<string>();
+        var files = Directory.Exists(Folder) ? Directory.GetFileSystemEntries(Folder).Where(file => !Path.GetFileName(file).StartsWith('.') && (_kind == "screenshots" ? new[] { ".png", ".jpg", ".jpeg" }.Contains(Path.GetExtension(file).ToLowerInvariant()) : !file.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))).ToList() : new List<string>();
+        files = _kind == "screenshots" ? files.OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToList() : files.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ToList();
         var title = _title + " · " + files.Count;
         if (_cardTitle != null) _cardTitle.Text = title;
         if (Content == null)
@@ -54,41 +55,54 @@ public sealed class ContentFilesPage : UserControl
             var hint = Ui.Text(T("光影需要 Iris（Fabric / Quilt）、Oculus（Forge）或 OptiFine。", "Shaders need Iris (Fabric / Quilt), Oculus (Forge) or OptiFine."), 12); hint.Margin = new Thickness(0, 0, 0, 12); hint.Foreground = Ui.Brush("KilnTextSecondary"); _list.Children.Add(hint);
         }
         Grid? gallery = null;
-        if (_kind == "screenshots") { gallery = new Grid { Name = "ScreenshotGallery", ColumnSpacing = 10, RowSpacing = 10 }; _list.Children.Add(gallery); gallery.SizeChanged += (_, _) => ArrangeGallery(gallery); }
+        if (_kind == "screenshots") { gallery = new Grid { Name = "ScreenshotGallery" }; _list.Children.Add(gallery); }
         foreach (var file in files)
         {
             var name = Path.GetFileName(file);
             var directory = Directory.Exists(file);
             var info = new FileInfo(file);
-            var open = Ui.Button(T("打开", "Open"), async (_, _) => { if (directory) await Windows.System.Launcher.LaunchFolderPathAsync(file); else await Windows.System.Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(file)); });
-            var copy = Ui.Button(T("另存为…", "Save as…"), async (_, _) =>
+            async Task OpenFile() { if (directory) await Windows.System.Launcher.LaunchFolderPathAsync(file); else await Windows.System.Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(file)); }
+            async Task SaveFile()
             {
+                if (directory) return;
                 var picker = new KilnFileSavePicker();  picker.SuggestedFileName = Path.GetFileNameWithoutExtension(name); picker.FileTypeChoices.Add("File", new List<string> { Path.GetExtension(name) });
                 var output = await picker.PickSaveFileAsync(); if (output != null) File.Copy(file, output.Path, true);
-            });
-            copy.IsEnabled = !directory;
-            var remove = Ui.Button(T("移到回收站", "Move to Recycle Bin"), async (_, _) => { try { Recycle.Delete(file); Reload(); } catch (Exception e) { await Ui.ShowError(XamlRoot, e); } });
+            }
+            Task RemoveFile() { Recycle.Delete(file); Reload(); return Task.CompletedTask; }
+            var menu = new MenuFlyout();
+            void MenuAction(string title, Func<Task> clicked, bool enabled = true) { var item = new MenuFlyoutItem { Text = title, IsEnabled = enabled }; item.Click += async (_, _) => { try { await clicked(); } catch (Exception error) { await Ui.ShowError(XamlRoot, error); } }; menu.Items.Add(item); }
+            MenuAction(T("打开", "Open"), OpenFile);
+            MenuAction(T("另存为…", "Save as…"), SaveFile, !directory);
+            MenuAction(T("在文件资源管理器中显示", "Show in File Explorer"), () => InstanceCardUi.Reveal(file));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            MenuAction(T("移到回收站", "Move to Recycle Bin"), RemoveFile);
             var filename = Ui.Text(Path.GetFileNameWithoutExtension(name), 13, FontWeights.Medium); filename.MaxLines = 1; filename.TextTrimming = TextTrimming.CharacterEllipsis;
             var detail = Ui.Text((directory ? T("文件夹", "Folder") : Job.FormatSize(info.Length)) + $" · {info.LastWriteTime:yyyy-MM-dd HH:mm}", 11.5); detail.Foreground = Ui.Brush("KilnTextSecondary");
             var labels = Ui.Col(filename, detail); labels.Spacing = 4;
             if (_kind == "screenshots")
             {
-                var image = new Image { Source = new BitmapImage(new Uri(file)), Height = 125, Stretch = Stretch.UniformToFill, HorizontalAlignment = HorizontalAlignment.Stretch };
-                var tools = Ui.Row(open, copy, remove); tools.Spacing = 4;
-                var caption = Ui.Col(labels, tools); caption.Padding = new Thickness(10); caption.Spacing = 8;
-                var tile = Ui.Col(image, caption); tile.Spacing = 0;
-                gallery!.Children.Add(new Border { BorderBrush = Ui.Brush("KilnStroke"), BorderThickness = new Thickness(1), Child = tile });
+                var image = new Image { Source = new BitmapImage(new Uri(file)) { DecodePixelWidth = 480 }, Height = 110, Stretch = Stretch.UniformToFill, HorizontalAlignment = HorizontalAlignment.Stretch };
+                var tile = new Button { Content = image, Style = (Style)Application.Current.Resources["KilnNavigationButton"], Padding = new Thickness(0), BorderBrush = Ui.Brush("KilnStroke"), BorderThickness = new Thickness(1), HorizontalContentAlignment = HorizontalAlignment.Stretch, HorizontalAlignment = HorizontalAlignment.Stretch, ContextFlyout = menu };
+                tile.SizeChanged += (_, _) => image.Height = Math.Max(1, (tile.ActualWidth - 2) * 9 / 16);
+                tile.DoubleTapped += async (_, _) => await Windows.System.Launcher.LaunchFileAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(file));
+                ToolTipService.SetToolTip(tile, name); Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tile, name);
+                gallery!.Children.Add(tile);
             }
             else
             {
-                var icon = new Grid { Width = 36, Height = 36, Background = Ui.Brush("KilnPanelSecondary") };
+                var icon = new Grid { Width = 32, Height = 32, Background = Ui.Brush("KilnPanelSecondary") };
                 icon.Children.Add(new FontIcon { Glyph = _kind == "shaderpacks" ? "\uE706" : "\uE91B", FontSize = 18, Foreground = Ui.Brush("KilnTextSecondary") });
-                if (!directory && Zip.Read(file, "pack.png") is { } bytes) { var image = new Image { Width = 36, Height = 36, Stretch = Stretch.UniformToFill }; icon.Children.Add(image); _ = LoadIcon(image, bytes); }
-                var label = new Grid { ColumnSpacing = 12 }; label.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) }); label.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); label.Children.Add(icon); Grid.SetColumn(labels, 1); label.Children.Add(labels);
-                _list.Children.Add(new Border { BorderBrush = Ui.Brush("KilnStroke"), BorderThickness = new Thickness(0, 0, 0, 1), Child = Ui.RecordRow(label, open, copy, remove) });
+                var bytes = directory ? (File.Exists(Path.Combine(file, "pack.png")) ? File.ReadAllBytes(Path.Combine(file, "pack.png")) : null) : Zip.Read(file, "pack.png");
+                if (bytes != null) { var image = new Image { Width = 32, Height = 32, Stretch = Stretch.UniformToFill }; icon.Children.Add(image); _ = LoadIcon(image, bytes); }
+                var reveal = InstanceCardUi.IconButton("\uE721", T("在文件资源管理器中显示", "Show in File Explorer"), async (_, _) => { try { await InstanceCardUi.Reveal(file); } catch (Exception e) { await Ui.ShowError(XamlRoot, e); } });
+                var trash = InstanceCardUi.IconButton("\uE74D", T("移到回收站", "Move to Recycle Bin"), async (_, _) => { try { Recycle.Delete(file); Reload(); } catch (Exception e) { await Ui.ShowError(XamlRoot, e); } });
+                var row = Ui.RecordRow(InstanceCardUi.FileLabel(icon, labels), reveal, trash);
+                foreach (var button in ((StackPanel)row.Children[1]).Children.OfType<Button>()) button.Width = 28;
+                row.ContextFlyout = menu;
+                _list.Children.Add(row);
             }
         }
-        if (gallery != null) ArrangeGallery(gallery);
+        if (gallery != null) InstanceCardUi.Adapt(gallery, 180, 10);
         if (files.Count == 0) { var empty = Ui.Text(_kind == "screenshots" ? T("还没有截图，在游戏中按 F2 截图。", "No screenshots yet. Press F2 in game to take one.") : T($"还没有{_title}，可添加文件或拖放 ZIP 到这里。", $"No {_title.ToLowerInvariant()} yet. Add files or drop ZIP files here."), 12); empty.Margin = new Thickness(10, 16, 10, 16); empty.Foreground = Ui.Brush("KilnTextSecondary"); _list.Children.Add(empty); }
         if (_kind == "resourcepacks" && files.Count > 0) { var hint = Ui.Text(T("在游戏的“选项 → 资源包”中启用。", "Enable them in game under Options → Resource Packs."), 11.5); hint.Margin = new Thickness(10, 12, 10, 0); hint.Foreground = Ui.Brush("KilnTextSecondary"); _list.Children.Add(hint); }
     }
@@ -100,14 +114,6 @@ public sealed class ContentFilesPage : UserControl
         if (parent is Panel panel) foreach (var child in panel.Children) if (FindText(child, text) is { } found) return found;
         if (parent is Border border && border.Child != null) return FindText(border.Child, text);
         return null;
-    }
-    private static void ArrangeGallery(Grid gallery)
-    {
-        var columns = Math.Max(1, (int)(gallery.ActualWidth / 260));
-        if (gallery.ColumnDefinitions.Count == columns && gallery.RowDefinitions.Count == (int)Math.Ceiling(gallery.Children.Count / (double)columns)) return;
-        gallery.ColumnDefinitions.Clear(); gallery.RowDefinitions.Clear();
-        for (var i = 0; i < columns; i++) gallery.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        for (var i = 0; i < gallery.Children.Count; i++) { if (i % columns == 0) gallery.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); Grid.SetColumn((FrameworkElement)gallery.Children[i], i % columns); Grid.SetRow((FrameworkElement)gallery.Children[i], i / columns); }
     }
     private static async Task LoadIcon(Image image, byte[] bytes)
     {

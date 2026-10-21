@@ -41,8 +41,12 @@ public sealed class InstanceDetailPage : Page
             var badges = Ui.Row(); badges.Spacing = 6;
             void Badge(string text) => badges.Children.Add(new Border { Padding = new Thickness(6, 3, 6, 3), Background = Ui.Brush("KilnPanelSecondary"), BorderBrush = Ui.Brush("KilnStroke"), BorderThickness = new Thickness(1), Child = Ui.Text(text, 11) });
             Badge($"Java {inst.JavaMajor}+"); if (inst.Isolated) Badge(T("独立游戏目录", "Separate game directory")); labels.Children.Add(badges); Grid.SetColumn(labels, 1); identity.Children.Add(labels);
-            var play = Ui.Button(T("开始游戏", "Play"), async (_, _) => { try { await LaunchCoordinator.Launch(inst, new LaunchOptions()); } catch (OperationCanceledException) { } catch (Exception e) { await Ui.ShowError(XamlRoot, e); } }); play.Background = Ui.Brush("KilnAccent"); play.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White); Grid.SetColumn(play, 2); identity.Children.Add(play);
-        _detail.Children.Add(Ui.Row(
+            var play = Ui.Button(T("开始游戏", "Play"), async (_, _) => { try { await LaunchCoordinator.Launch(inst, new LaunchOptions()); } catch (OperationCanceledException) { } catch (Exception e) { await Ui.ShowError(XamlRoot, e); } });
+            play.Content = Ui.Row(new FontIcon { Glyph = "\uE768", FontSize = 11 }, Ui.Text(T("开始游戏", "Play"), 12.5));
+            play.Background = Ui.Brush("KilnAccent"); play.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
+            foreach (var element in ((FlowRow)play.Content).Children) { if (element is TextBlock text) text.Foreground = play.Foreground; if (element is FontIcon symbol) symbol.Foreground = play.Foreground; }
+            Grid.SetColumn(play, 2); identity.Children.Add(play);
+        var manageActions = new List<Button> {
             Ui.Button(Localization.T("重命名", "Rename"), async (_, _) =>
             {
                 var (ok, name) = await Ui.Prompt(XamlRoot, Localization.T("重命名", "Rename"), inst.Name, inst.Name);
@@ -70,18 +74,35 @@ public sealed class InstanceDetailPage : Page
                 catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); await Ui.ShowError(XamlRoot, e); }
             }),
             Ui.Button(Localization.T("导出整合包", "Export modpack"), async (_, _) => await ExportModpack(inst)),
-            Ui.Button(Localization.T("导出启动脚本", "Export launch script"), async (_, _) => await ExportScript(inst))));
-            _detail.Children.Add(Ui.Row(
-                Ui.Button(T("创建桌面快捷方式", "Create desktop shortcut"), (_, _) => SystemIntegration.CreateShortcut(inst)),
-                Ui.Button(T("复制启动链接", "Copy launch link"), (_, _) => { var data = new Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText("kiln://launch/" + Uri.EscapeDataString(inst.Name)); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data); })));
-            var folders = new Grid { ColumnSpacing = 8, RowSpacing = 8 };
-            for (var column = 0; column < 4; column++) folders.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Ui.Button(Localization.T("导出启动脚本", "Export launch script"), async (_, _) => await ExportScript(inst)),
+            Ui.Button(T("导出诊断包…", "Export diagnostics…"), async (_, _) => await ExportDiagnostics(inst)),
+            Ui.Button(T("创建桌面快捷方式", "Create desktop shortcut"), (_, _) => SystemIntegration.CreateShortcut(inst)),
+            Ui.Button(T("复制启动链接", "Copy launch link"), (_, _) => { var data = new Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText("kiln://launch/" + Uri.EscapeDataString(inst.Name)); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data); }) };
+            var delete = Ui.Button(T("删除", "Delete"), async (_, _) => await DeleteInstance(inst));
+            delete.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 194, 61, 61));
+            manageActions.Add(delete);
+            var management = new Grid { Name = "InstanceManagement", ColumnSpacing = 8, RowSpacing = 8 };
+            for (var i = 0; i < 3; i++) { management.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); management.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); }
+            for (var i = 0; i < manageActions.Count; i++)
+            {
+                var button = manageActions[i]; var title = button.Content?.ToString() ?? "";
+                button.Content = new TextBlock { Text = title, FontSize = 12.5, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
+                button.HorizontalAlignment = HorizontalAlignment.Stretch; button.HorizontalContentAlignment = HorizontalAlignment.Center; button.MinWidth = 0; button.Height = 32;
+                ToolTipService.SetToolTip(button, title); Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, title);
+                Grid.SetColumn(button, i % 3); Grid.SetRow(button, i / 3); management.Children.Add(button);
+            }
+            _detail.Children.Add(management);
+            _detail.Spacing = 8;
+            var folders = new Grid { Name = "InstanceFolders" };
             var locations = new[] { (T("版本文件夹", "Version folder"), inst.Dir), (T("游戏目录", "Game directory"), inst.GameDir), ("Mods", Path.Combine(inst.GameDir, "mods")), (T("存档", "Worlds"), Path.Combine(inst.GameDir, "saves")), (T("资源包", "Resource packs"), Path.Combine(inst.GameDir, "resourcepacks")), (T("光影", "Shaders"), Path.Combine(inst.GameDir, "shaderpacks")), (T("截图", "Screenshots"), Path.Combine(inst.GameDir, "screenshots")), (T("崩溃报告", "Crash reports"), Path.Combine(inst.GameDir, "crash-reports")) };
             for (var index = 0; index < locations.Length; index++)
             {
-                if (index % 4 == 0) folders.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                var (title, path) = locations[index]; var folder = OpenFolderButton(path); folder.Content = new TextBlock { Text = title, FontSize = 12, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis }; folder.MinWidth = 0; folder.HorizontalAlignment = HorizontalAlignment.Stretch; folder.Height = 34; ToolTipService.SetToolTip(folder, path); Grid.SetRow(folder, index / 4); Grid.SetColumn(folder, index % 4); folders.Children.Add(folder);
+                var (title, path) = locations[index]; var folder = OpenFolderButton(path);
+                var label = new TextBlock { Text = title, FontSize = 12.5, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
+                folder.Content = InstanceCardUi.FileLabel(new FontIcon { Glyph = "\uE8B7", FontSize = 14, Foreground = Ui.Brush("KilnAccent") }, label, 16);
+                folder.HorizontalContentAlignment = HorizontalAlignment.Stretch; folder.MinWidth = 0; folder.HorizontalAlignment = HorizontalAlignment.Stretch; folder.Height = 32; ToolTipService.SetToolTip(folder, path); folders.Children.Add(folder);
             }
+            InstanceCardUi.Adapt(folders, 140);
             return Ui.Scroll(Ui.Card("", identity), Ui.Card(T("文件夹", "Folders"), folders), Ui.Card(T("管理", "Manage"), _detail));
         }
         if (section == "settings")
@@ -140,21 +161,33 @@ public sealed class InstanceDetailPage : Page
         }
         if (section == "worlds")
         {        // 存档（直接进入 / 导出 / 删除 / 导入）
-        if (InstanceManager.Worlds(inst).Count == 0) _detail.Children.Add(Ui.Text(T("还没有存档，可导入已有的存档或在游戏中创建。", "No worlds yet. Import a world or create one in game."), 12));
-        foreach (var w in InstanceManager.Worlds(inst))
+        var worlds = InstanceManager.Worlds(inst);
+        if (worlds.Count == 0) { var empty = Ui.Text(T("还没有存档", "No worlds yet"), 12); empty.Foreground = Ui.Brush("KilnTextSecondary"); empty.Margin = new Thickness(0, 8, 0, 8); _detail.Children.Add(empty); }
+        foreach (var w in worlds)
         {
             var world = w;
             var playButton = Ui.Button(Localization.T("进入", "Play"), async (_, _) => await PlayWorld(inst, world.Name));
             playButton.IsEnabled = inst.SupportsQuickPlay;
-            _detail.Children.Add(Ui.RecordRow(
-                Ui.Col(Ui.Text(world.Name, 13), Ui.Text(world.LastPlayed.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), 11)),
+            UIElement worldIcon = BlockIconControl.For("grass_block", 32);
+            var imagePath = Path.Combine(world.Url, "icon.png");
+            if (File.Exists(imagePath)) worldIcon = new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(imagePath)), Width = 32, Height = 32 };
+            var time = Ui.Text(T("上次游玩：", "Last played: ") + world.LastPlayed.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), 11.5); time.Foreground = Ui.Brush("KilnTextSecondary");
+            var worldName = Ui.Text(world.Name, 13, FontWeights.Medium); worldName.TextWrapping = TextWrapping.NoWrap; worldName.TextTrimming = TextTrimming.CharacterEllipsis;
+            var worldLabels = Ui.Col(worldName, time); worldLabels.Spacing = 2;
+            var row = Ui.RecordRow(
+                InstanceCardUi.FileLabel(worldIcon, worldLabels),
                 playButton,
                 Ui.Button(Localization.T("导出…", "Export…"), async (_, _) => await ExportWorld(inst, world)),
-                Ui.Button(Localization.T("删除", "Delete"), async (_, _) => await DeleteWorld(inst, world))));
+                InstanceCardUi.IconButton("\uE8B7", T("打开文件夹", "Open folder"), async (_, _) => await Windows.System.Launcher.LaunchFolderPathAsync(world.Url)),
+                InstanceCardUi.IconButton("\uE74D", T("删除", "Delete"), async (_, _) => await DeleteWorld(inst, world)));
+            foreach (var button in ((StackPanel)row.Children[1]).Children.OfType<Button>()) if (button.Content is FontIcon) button.Width = 28;
+            row.Name = "WorldRecord";
+            _detail.Children.Add(row);
         }
-        _detail.Children.Add(Ui.Row(
-            Ui.Button(Localization.T("导入存档…", "Import world…"), async (_, _) => await ImportWorld(inst)),
-            OpenFolderButton(Path.Combine(inst.GameDir, "saves"))));
+        _detail.Spacing = 0;
+        return Ui.Scroll(Ui.CardWithActions(T("存档", "Worlds") + " · " + worlds.Count, new[] {
+            Ui.Button(T("导入…", "Import…"), async (_, _) => await ImportWorld(inst)),
+            InstanceCardUi.IconButton("\uE8B7", T("打开文件夹", "Open folder"), async (_, _) => { var dir = Path.Combine(inst.GameDir, "saves"); Directory.CreateDirectory(dir); await Windows.System.Launcher.LaunchFolderPathAsync(dir); }) }, _detail));
 
         }
         return new ScrollViewer { Content = Ui.Card(section == "settings" ? T("版本设置", "Instance settings") : section == "worlds" ? T("存档", "Worlds") : T("概览", "Overview"), _detail) };
@@ -261,22 +294,28 @@ public sealed class InstanceDetailPage : Page
         catch (Exception e) { await Ui.ShowError(XamlRoot, e); }
     }
 
-    private async Task ExportModpack(McInstance inst)
+    private Task ExportModpack(McInstance inst) => ModpackDialogs.Export(XamlRoot, inst);
+
+    private async Task DeleteInstance(McInstance instance)
     {
-        var (ok, name) = await Ui.Prompt(XamlRoot, Localization.T("整合包名称", "Modpack name"), inst.Name, inst.Name);
-        if (!ok) return;
-        var picker = new KilnFileSavePicker();
-        
-        picker.SuggestedFileName = name;
-        picker.FileTypeChoices.Add("Modrinth modpack (.mrpack)", new List<string> { ".mrpack" });
-        var file = await picker.PickSaveFileAsync();
-        if (file == null) return;
-        var include = Modpack.ExportItems(inst).Where(i => i.Suggested).Select(i => i.Path).ToHashSet();
-        var job = MainWindow.NewJob(Localization.T("导出整合包", "Export modpack"));
-        var r = await Modpack.Export(inst, name, "1.0", "", include, file.Path, job);
-        await App.ShowInfo(App.MainAppWindow!, Localization.T(
-            $"导出完成：{r.Linked} 个文件以下载地址引用，{r.Embedded} 个直接打包。",
-            $"Exported: {r.Linked} linked, {r.Embedded} embedded."));
+        try
+        {
+            var dependents = InstanceManager.DependentsOf(instance);
+            if (dependents.Count > 0) { await Ui.ShowError(XamlRoot, T("这些版本依赖它：", "These instances depend on it: ") + string.Join(", ", dependents)); return; }
+            var dialog = new KilnDialog { XamlRoot = XamlRoot, Title = T("删除版本", "Delete instance"), Content = T($"确定删除 {instance.Name}？版本文件夹及其中的存档与 Mod 会移到回收站。", $"Delete {instance.Name}? Its folder, worlds and mods will be moved to the Recycle Bin."), PrimaryButtonText = T("移到回收站", "Move to Recycle Bin"), CloseButtonText = T("取消", "Cancel"), DefaultButton = ContentDialogButton.Close };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            Recycle.Delete(instance.Dir); MainWindow.Current!.NavigateTo("instances");
+        }
+        catch (Exception e) { await Ui.ShowError(XamlRoot, e); }
+    }
+
+    private async Task ExportDiagnostics(McInstance instance)
+    {
+        var picker = new KilnFileSavePicker { SuggestedFileName = $"Kiln-diagnostics-{instance.Name}-{DateTime.Now:yyyyMMdd-HHmm}" };
+        picker.FileTypeChoices.Add("ZIP", new List<string> { ".zip" });
+        var file = await picker.PickSaveFileAsync(); if (file == null) return;
+        try { await Diagnostics.Export(instance, null, file.Path); await App.ShowInfo(App.MainAppWindow!, T("诊断包已导出", "Diagnostics exported")); }
+        catch (Exception e) { await Ui.ShowError(XamlRoot, e); }
     }
 
     private async Task ExportScript(McInstance inst)

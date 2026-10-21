@@ -26,7 +26,8 @@ public sealed class ResourceSearchPage : UserControl
     private static string T(string zh, string en) => Localization.T(zh, en);
     private McInstance? Target => _target.SelectedIndex > 0 && _target.SelectedIndex <= _instances.Count ? _instances[_target.SelectedIndex - 1] : null;
     private string? Loader => _type is Modrinth.ProjectType.Mod or Modrinth.ProjectType.Modpack && _loader.SelectedIndex > 0 ? _loader.SelectedItem?.ToString() : null;
-    public ResourceSearchPage(Modrinth.ProjectType type)
+    public ResourceSearchPage(Modrinth.ProjectType type) : this(type, true) { }
+    internal ResourceSearchPage(Modrinth.ProjectType type, bool loadRemote)
     {
         _type = type;
         _instances = InstanceScanner.Scan(LauncherSettings.Shared.MinecraftFolder).Where(i => i.Kind != McInstance.Category.Error).ToList();
@@ -38,14 +39,14 @@ public sealed class ResourceSearchPage : UserControl
         SetTarget(); _target.SelectionChanged += (_, _) => SetTarget();
         var root = new Grid { RowSpacing = 12 };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var searchRow = new Grid { ColumnSpacing = 10 };
+        var searchRow = new Grid { Name = "ResourceSearchToolbar", ColumnSpacing = 10 };
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
         _query.PlaceholderText = T("搜索", "Search ") + _type.Title();
-        searchRow.Children.Add(Ui.SearchField(_query));
+        var searchField = Ui.SearchField(_query); searchField.Name = "ResourceSearchField"; searchField.HorizontalAlignment = HorizontalAlignment.Stretch; searchRow.Children.Add(searchField);
         if (type == Modrinth.ProjectType.Modpack)
         {
-            var install = Ui.Button(T("从文件安装…", "Install from file…"), async (_, _) => await ImportPage.ChooseModpack(XamlRoot)); install.HorizontalAlignment = HorizontalAlignment.Right; Grid.SetColumn(install, 1); searchRow.Children.Add(install);
+            var install = Ui.Button(T("从文件安装…", "Install from file…"), async (_, _) => await ImportPage.ChooseModpack(XamlRoot)); install.MinWidth = 0; install.HorizontalAlignment = HorizontalAlignment.Stretch; install.Height = 28; Grid.SetColumn(install, 1); searchRow.Children.Add(install);
         }
         else
         {
@@ -78,7 +79,7 @@ public sealed class ResourceSearchPage : UserControl
         _query.TextChanged += (_, _) => { debounce.Stop(); debounce.Start(); };
         Unloaded += (_, _) => debounce.Stop();
         UpdateHint();        _more = Ui.Button(T("加载更多", "Load more"), async (_, _) => await Search(true));
-        var scroll = new ScrollViewer { Content = Ui.Col(_results, _more) }; Grid.SetRow(scroll, 2); root.Children.Add(scroll);
+        var scroll = new ScrollViewer { Name = "ResourceResultsViewport", Content = Ui.Col(_results, _more), HorizontalContentAlignment = HorizontalAlignment.Stretch, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; Grid.SetRow(scroll, 2); root.Children.Add(scroll);
         var retry = Ui.Button(T("重试", "Retry"), async (_, _) => await Search(false));
         _configureCurseforge = Ui.Button(T("配置 CurseForge", "Configure CurseForge"), (_, _) => { Ui.SelectTab("setup", 3); MainWindow.Current!.NavigateTo("setup"); });
         _configureCurseforge.Visibility = Visibility.Collapsed;
@@ -89,7 +90,7 @@ public sealed class ResourceSearchPage : UserControl
         statusRow.Children.Add(_status); var statusActions = Ui.Row(_configureCurseforge, retry); statusActions.Spacing = 8; Grid.SetColumn(statusActions, 1); statusRow.Children.Add(statusActions);
         Grid.SetRow(statusRow, 3); root.Children.Add(statusRow);
         _query.KeyDown += async (_, e) => { if (e.Key == Windows.System.VirtualKey.Enter) { e.Handled = true; await Search(false); } };
-        Loaded += async (_, _) => { _alive = true; await Search(false); };
+        Loaded += async (_, _) => { _alive = loadRemote; if (loadRemote) await Search(false); };
         Unloaded += (_, _) => { _alive = false; _generation++; _searchCancellation?.Cancel(); };
         Content = root;
     }
@@ -197,13 +198,19 @@ public sealed class ResourceSearchPage : UserControl
                     if (choice == ContentDialogResult.Primary) dependencies.AddRange(required.Select(d => d.Version));
                 }
             }
-            var job = MainWindow.NewJob(T($"安装 {project.TitleText}", $"Install {project.TitleText}"));
+            var job = MainWindow.NewJob(_type == Modrinth.ProjectType.Modpack ? T($"下载整合包 {project.TitleText}", $"Download modpack {project.TitleText}") : T($"安装 {project.TitleText}", $"Install {project.TitleText}"));
             try
             {
                 if (_type == Modrinth.ProjectType.Modpack)
                 {
-                    var archive = Path.Combine(Paths.Cache, "modpack-" + Guid.NewGuid().ToString("N") + Path.GetExtension(version.FileName));
-                    await Download(version, archive, job); await ImportPage.InstallModpack(XamlRoot, archive);
+                    var cacheId = string.Concat(version.Id.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+                    var archive = Path.Combine(Paths.Cache, $"modpack-{version.SourceKind}-{cacheId}" + Path.GetExtension(version.FileName));
+                    var root = XamlRoot;
+                    await Download(version, archive, job);
+                    job.State = Job.JobState.Success;
+                    var outcome = await ImportPage.InstallModpack(root, archive);
+                    _status.Text = outcome switch { ImportPage.InstallResult.Installed => T("安装完成", "Installed"), ImportPage.InstallResult.Cancelled => T("已取消安装", "Installation cancelled"), _ => T("整合包安装失败，请查看安装任务。", "Modpack installation failed. Check the install task.") };
+                    return;
                 }
                 else if (target == null)
                 {

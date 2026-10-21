@@ -23,6 +23,13 @@ public sealed partial class MainWindow : Window
     private Microsoft.UI.Xaml.Controls.Primitives.Popup? _accountPopup;
     private double? _captionBackdropLuminance;
     private bool _whiteCaption;
+    private bool _diagnosticsRunning;
+    internal void SetDiagnosticsRunning(bool running)
+    {
+        _diagnosticsRunning = running; Shell.IsHitTestVisible = !running;
+        DragRegion.Children.Clear();
+        if (running) DragRegion.Children.Add(new TextBlock { Text = Localization.T("正在运行界面诊断，请稍候…", "Running UI diagnostics, please wait…"), FontSize = 11, Foreground = Ui.Brush("KilnTextSecondary"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false });
+    }
     private readonly DispatcherTimer _jobsTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private object? _jobsIdleContent;
     private StackPanel? _jobsProgressContent;
@@ -130,6 +137,8 @@ public sealed partial class MainWindow : Window
         Current = this;
         _ = LauncherSettings.Shared; // Load the saved language before constructing any labels.
         InitializeComponent();
+        if (diagnostics) SetDiagnosticsRunning(true);
+        Shell.PreviewKeyDown += (_, args) => { if (_diagnosticsRunning) args.Handled = true; };
         ContentRegion.Children.Insert(0, new DotGridControl());
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(DragRegion);
@@ -158,7 +167,7 @@ public sealed partial class MainWindow : Window
                 Key = (Windows.System.VirtualKey)((int)Windows.System.VirtualKey.Number1 + i),
                 Modifiers = Windows.System.VirtualKeyModifiers.Control | Windows.System.VirtualKeyModifiers.Menu,
             };
-            key.Invoked += (_, args) => { if (!KilnDialog.IsOpen) { AccountStore.Shared.SelectAt(index); ReloadCurrentPage(); } args.Handled = true; };
+            key.Invoked += (_, args) => { if (!_diagnosticsRunning && !KilnDialog.IsOpen) { AccountStore.Shared.SelectAt(index); ReloadCurrentPage(); } args.Handled = true; };
             Shell.KeyboardAccelerators.Add(key);
         }
         if (!diagnostics) NavigateTo("home");
@@ -191,7 +200,7 @@ public sealed partial class MainWindow : Window
             Content = label, Width = 76, Height = 50, Padding = new Thickness(0),
             Style = (Style)Application.Current.Resources["KilnNavigationButton"],
         };
-        button.Click += (_, _) => NavigateTo(tag);
+        button.Click += (_, _) => { if (!_diagnosticsRunning) NavigateTo(tag); };
         _navigation[tag] = button;
         (footer ? FooterItems : NavigationItems).Children.Add(button);
     }
@@ -216,6 +225,7 @@ public sealed partial class MainWindow : Window
 
     public void NavigateTo(string tag)
     {
+        if (tag == "import") { _ = ImportPage.ShowDialog(Shell.XamlRoot); return; }
         SetCaptionBackdrop();
         _detailInstance = null;
         _currentPage = tag;
@@ -233,7 +243,6 @@ public sealed partial class MainWindow : Window
             "resourcepacks" => new DownloadPage(Modrinth.ProjectType.ResourcePack),
             "shaders" => new DownloadPage(Modrinth.ProjectType.Shader),
             "modpacks" => new DownloadPage(Modrinth.ProjectType.Modpack),
-            "import" => new ImportPage(),
             "instances" => new InstancesPage(),
             "accounts" => new AccountsPage(),
             "setup" => new SetupPage(),

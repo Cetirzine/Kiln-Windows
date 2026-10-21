@@ -5,6 +5,19 @@ namespace Kiln.Core;
 /// ~/Library/Logs、~/Library/Caches → %LOCALAPPDATA%（本机）。
 public static class Paths
 {
+    public static string Downloads
+    {
+        get
+        {
+            try
+            {
+                var saved = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders", "{374DE290-123F-4565-9164-39C4925E467B}", null) as string;
+                if (!string.IsNullOrWhiteSpace(saved)) return Path.GetFullPath(Environment.ExpandEnvironmentVariables(saved));
+            }
+            catch { }
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        }
+    }
     /// Windows 上官方启动器的默认游戏目录
     public static readonly string DefaultMinecraft =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".minecraft");

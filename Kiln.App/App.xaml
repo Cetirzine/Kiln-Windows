@@ -112,6 +112,34 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+            <Style TargetType="CheckBox">
+                <Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="28" /><Setter Property="FontSize" Value="12.5" />
+                <Setter Property="Foreground" Value="{ThemeResource KilnText}" />
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
+                    <Grid x:Name="CheckRoot" Background="Transparent" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" /><VisualState x:Name="PointerOver" /><VisualState x:Name="Pressed" />
+                                <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="CheckRoot.Opacity" Value="0.45" /></VisualState.Setters></VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Unchecked" />
+                                <VisualState x:Name="Checked"><VisualState.Setters><Setter Target="CheckSurface.Background" Value="{ThemeResource KilnAccent}" /><Setter Target="CheckGlyph.Visibility" Value="Visible" /></VisualState.Setters></VisualState>
+                                <VisualState x:Name="Indeterminate"><VisualState.Setters><Setter Target="CheckSurface.Background" Value="{ThemeResource KilnAccent}" /><Setter Target="MixedMark.Visibility" Value="Visible" /></VisualState.Setters></VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Unfocused" /><VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="Focused"><VisualState.Setters><Setter Target="CheckSurface.BorderBrush" Value="{ThemeResource KilnAccent}" /><Setter Target="CheckSurface.BorderThickness" Value="2" /></VisualState.Setters></VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border x:Name="CheckSurface" Height="16" CornerRadius="1" VerticalAlignment="Center" Background="{ThemeResource KilnPanel}" BorderBrush="{ThemeResource KilnEdge}" BorderThickness="1">
+                            <Grid><FontIcon x:Name="CheckGlyph" Glyph="&#xE73E;" FontSize="10" Foreground="White" Visibility="Collapsed" /><Border x:Name="MixedMark" Width="8" Height="2" Background="White" Visibility="Collapsed" /></Grid>
+                        </Border>
+                        <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" />
+                    </Grid>
+                </ControlTemplate></Setter.Value></Setter>
+            </Style>
             <Style TargetType="TextBox"><Setter Property="FontSize" Value="13" /><Setter Property="CornerRadius" Value="2" /><Setter Property="MinHeight" Value="28" /></Style>
             <Style TargetType="ComboBox"><Setter Property="FontSize" Value="12.5" /><Setter Property="CornerRadius" Value="2" /><Setter Property="MinHeight" Value="28" /></Style>
             <Style TargetType="ComboBoxItem">

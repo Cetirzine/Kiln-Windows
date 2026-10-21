@@ -149,14 +149,15 @@ internal static class Ui
         var titleText = Text(title, 12.5, FontWeights.SemiBold);
         titleText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
         titleText.VerticalAlignment = VerticalAlignment.Center;
+        titleText.TextWrapping = TextWrapping.NoWrap; titleText.TextTrimming = TextTrimming.CharacterEllipsis;
         var headerGrid = new Grid { ColumnSpacing = 12 };
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         headerGrid.Children.Add(titleText);
-        var trailing = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        var trailing = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, RequestedTheme = ElementTheme.Dark };
         foreach (var action in actions) trailing.Children.Add(action);
         Grid.SetColumn(trailing, 1); headerGrid.Children.Add(trailing);
-        var header = new Border { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black), MinHeight = 30, Padding = new Thickness(12, 6, 12, 6), Child = headerGrid };
+        var header = new Border { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black), MinHeight = 30, Padding = new Thickness(12, actions.Count == 0 ? 0 : 4, 6, actions.Count == 0 ? 0 : 4), Child = headerGrid };
         if (title.Length == 0) header.Visibility = Visibility.Collapsed;
         var stack = Col(header, body); stack.Spacing = 0;
         var surface = new Border { Background = Brush("KilnPanel"), BorderBrush = Brush("KilnEdge"), BorderThickness = new Thickness(1.5), Child = stack };
@@ -199,7 +200,11 @@ internal static class Ui
         Grid.SetRow(bar, 1); root.Children.Add(bar); Select(Math.Clamp(TabSelections.GetValueOrDefault(key), 0, tabs.Length - 1)); return root;
     }
 
-    public static ScrollViewer Scroll(params UIElement[] children) => new() { Content = Col(children), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+    public static ScrollViewer Scroll(params UIElement[] children)
+    {
+        var content = Col(children); content.Spacing = 14;
+        return new ScrollViewer { Content = content, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+    }
 
     public static Grid RecordRow(UIElement label, params Button[] actions)
     {

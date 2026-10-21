@@ -227,25 +227,24 @@ public static class Modpack
     }
 
     /// 在“下载”文件夹中查找用户手动下载的文件（校验 SHA-1 后移到目标位置），返回仍未找到的文件
-    public static IReadOnlyList<ManualFile> CollectManualDownloads(IReadOnlyList<ManualFile> files)
+    public static IReadOnlyList<ManualFile> CollectManualDownloads(IReadOnlyList<ManualFile> files, string? downloadsDirectory = null)
     {
-        var downloads = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) is { } home
-            ? Path.Combine(home, "Downloads")
-            : "";
+        var downloads = downloadsDirectory ?? Paths.Downloads;
         return files.Where(m =>
         {
+            bool Valid(string path) => File.Exists(path) && (m.Sha1 == null || string.Equals(Hash.Sha1File(path), m.Sha1, StringComparison.OrdinalIgnoreCase));
+            try { if (Valid(m.Destination)) return false; } catch { }
+            if (m.FileName.Contains('/') || m.FileName.Contains('\\') || SafePath(m.FileName, downloads) == null) return true;
             // 浏览器可能把空格等字符替换掉，同时比较原名与常见变体
             var candidates = new[] { m.FileName, m.FileName.Replace(" ", "+"), m.FileName.Replace(" ", "_") };
             foreach (var file in candidates)
             {
                 var src = Path.Combine(downloads, file);
-                if (!File.Exists(src)) continue;
-                if (m.Sha1 is { } sha1 && Hash.Sha1File(src) != sha1) continue;
                 try
                 {
+                    if (!Valid(src)) continue;
                     Directory.CreateDirectory(Path.GetDirectoryName(m.Destination)!);
-                    if (File.Exists(m.Destination)) File.Delete(m.Destination);
-                    File.Move(src, m.Destination);
+                    File.Move(src, m.Destination, overwrite: true);
                     return false;
                 }
                 catch { }
@@ -298,9 +297,9 @@ public static class Modpack
     /// 相对路径解析到游戏目录内；拒绝绝对路径与 ..
     public static string? SafePath(string path, string root)
     {
-        if (path.StartsWith('/') || path.Contains('\\')) return null;
+        if (path.StartsWith('/') || path.Contains('\\') || path.Contains(':') || path.Contains('\0')) return null;
         var parts = path.Split('/').Where(p => p.Length > 0).ToList();
-        if (parts.Count == 0 || parts.Contains("..")) return null;
+        if (parts.Count == 0 || parts.Any(p => p is "." or ".." || p.EndsWith('.') || p.EndsWith(' ') || p.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)) return null;
         return parts.Aggregate(root, (acc, p) => Path.Combine(acc, p));
     }
 
@@ -335,15 +334,15 @@ public static class Modpack
     }
 
     /// 不应导出的内容：缓存、日志、账号信息与启动器文件
-    private static readonly HashSet<string> Excluded = new()
+    private static readonly HashSet<string> Excluded = new(StringComparer.OrdinalIgnoreCase)
     {
         "logs", "crash-reports", "versions", "assets", "libraries", "natives", ".kiln", ".fabric",
         ".mixin.out", "debug", "downloads", "usercache.json", "usernamecache.json",
-        "launcher_profiles.json", "command_history.txt", ".DS_Store", "backups", ".cache", "local",
+        "launcher_profiles.json", "launcher_accounts.json", "launcher_settings.json", "command_history.txt", ".DS_Store", "backups", ".cache", "local",
     };
 
     /// 默认不勾选：个人数据
-    private static readonly HashSet<string> Personal = new()
+    private static readonly HashSet<string> Personal = new(StringComparer.OrdinalIgnoreCase)
     {
         "saves", "screenshots", "servers.dat", "servers.dat_old", "options.txt", "optionsof.txt",
         "optionsshaders.txt", "schematics", "replay_recordings", "journeymap", "xaero", "XaeroWorldMap", "XaeroWaypoints",
@@ -357,7 +356,7 @@ public static class Modpack
         catch { return Array.Empty<ExportItem>(); }
         return names.SelectMany(n =>
         {
-            if (Excluded.Contains(n) || n.EndsWith(".log") || n.StartsWith('.')) return Array.Empty<ExportItem>();
+            if (Excluded.Contains(n) || n.EndsWith(".log", StringComparison.OrdinalIgnoreCase) || n.StartsWith('.')) return Array.Empty<ExportItem>();
             // 独立游戏目录中的版本文件
             if (instance.Isolated && (n == $"{instance.Name}.json" || n == $"{instance.Name}.jar" || n == $"{instance.Name}-natives"))
                 return Array.Empty<ExportItem>();
@@ -374,7 +373,7 @@ public static class Modpack
         try
         {
             if (File.Exists(url)) return new FileInfo(url).Length;
-            return Directory.EnumerateFiles(url, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+            return Directory.EnumerateFiles(url, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = true }).Sum(f => new FileInfo(f).Length);
         }
         catch { return 0; }
     }
@@ -386,12 +385,15 @@ public static class Modpack
         ISet<string> include, string output, Job job)
     {
         var gameDir = instance.GameDir;
+        job.Token.ThrowIfCancellationRequested();
         job.Enter(T.Invoke("整理文件", "Collecting files"), 0, 3);
         // 收集文件
         var files = new List<(string Rel, string Url)>();
         foreach (var top in include.OrderBy(s => s, StringComparer.Ordinal))
         {
-            var url = Path.Combine(gameDir, top);
+            job.Token.ThrowIfCancellationRequested();
+            if (top.Contains('/') || SafePath(top, gameDir) is not { } url || top.StartsWith('.') || Excluded.Contains(top) || top.EndsWith(".log", StringComparison.OrdinalIgnoreCase))
+                throw new LauncherException(T.Invoke($"无法导出此路径：{top}", $"This path cannot be exported: {top}"));
             if (File.Exists(url))
             {
                 files.Add((top, url));
@@ -399,8 +401,9 @@ public static class Modpack
             }
             if (!Directory.Exists(url)) continue;
             var baseFull = Path.GetFullPath(url);
-            foreach (var f in Directory.EnumerateFiles(url, "*", SearchOption.AllDirectories))
+            foreach (var f in Directory.EnumerateFiles(url, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint }))
             {
+                job.Token.ThrowIfCancellationRequested();
                 if (Path.GetFileName(f) == ".DS_Store") continue;
                 var full = Path.GetFullPath(f);
                 if (!full.StartsWith(baseFull + Path.DirectorySeparatorChar)) continue;
@@ -418,9 +421,13 @@ public static class Modpack
         }).ToList();
         var hashes = new Dictionary<string, string>();
         foreach (var f in linkable)
+        {
+            job.Token.ThrowIfCancellationRequested();
             if (Hash.Sha1File(f.Url) is { } h) hashes[f.Rel] = h;
+        }
         var found = new Dictionary<string, Json>();
-        try { found = await Modrinth.VersionsByHash(hashes.Values.ToList()); }
+        try { found = await Modrinth.VersionsByHash(hashes.Values.ToList(), job.Token); }
+        catch (OperationCanceledException) when (job.Token.IsCancellationRequested) { throw; }
         catch { }
         var indexFiles = new List<Json>();
         var linkedPaths = new HashSet<string>();
@@ -455,6 +462,7 @@ public static class Modpack
             var embedded = 0;
             foreach (var f in files.Where(f => !linkedPaths.Contains(f.Rel)))
             {
+                job.Token.ThrowIfCancellationRequested();
                 if (SafePath("overrides/" + f.Rel, staging) is not { } dest) continue;
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 File.Copy(f.Url, dest);
@@ -483,10 +491,16 @@ public static class Modpack
             };
             if (summary.Length > 0) index["summary"] = Json.Of(summary);
             File.WriteAllBytes(Path.Combine(staging, "modrinth.index.json"), Json.From(index).Data());
-            try { File.Delete(output); } catch { }
-            using (var zip = ZipFile.Open(output, ZipArchiveMode.Create))
-                foreach (var f in Directory.EnumerateFiles(staging, "*", SearchOption.AllDirectories))
+            var packed = Path.Combine(staging, "export.mrpack");
+            var payload = Directory.GetFiles(staging, "*", SearchOption.AllDirectories);
+            using (var zip = ZipFile.Open(packed, ZipArchiveMode.Create))
+                foreach (var f in payload)
+                {
+                    job.Token.ThrowIfCancellationRequested();
                     zip.CreateEntryFromFile(f, Path.GetRelativePath(staging, f).Replace('\\', '/'));
+                }
+            job.Token.ThrowIfCancellationRequested();
+            File.Move(packed, output, overwrite: true);
             return new ExportResult(linkedPaths.Count, embedded);
         }
         finally

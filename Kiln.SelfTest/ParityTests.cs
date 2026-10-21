@@ -96,6 +96,37 @@ internal static class ParityTests
             Check("Windows reserved filenames", InstanceManager.ValidateName("CON", root) != null && InstanceManager.ValidateName("NUL", root) != null && InstanceManager.ValidateName("name.", root) != null);
             Check("Modpack traversal blocked", Modpack.SafePath("../x", root) == null && Modpack.SafePath("/etc/x", root) == null && Modpack.SafePath("C:\\x", root) == null);
             Check("Modpack relative path", string.Equals(Modpack.SafePath("mods/a.jar", root), Path.Combine(root, "mods", "a.jar"), StringComparison.OrdinalIgnoreCase));
+            Check("Modpack rejects drive paths and alternate data streams", Modpack.SafePath("C:/outside.jar", root) == null && Modpack.SafePath("mods/a.jar:stream", root) == null && Modpack.SafePath("mods/../x", root) == null && Modpack.SafePath("mods./x", root) == null);
+            var packInstance = new McInstance(root, "ParityB"); var packSetup = packInstance.Setup; packSetup.Isolation = true; LauncherSettings.Shared.SaveInstanceSetup(packSetup, packInstance.Dir);
+            var configDir = Path.Combine(packInstance.GameDir, "config"); Directory.CreateDirectory(configDir); File.WriteAllText(Path.Combine(configDir, "client.cfg"), "parity-config");
+            Directory.CreateDirectory(Path.Combine(packInstance.GameDir, "saves")); File.WriteAllText(Path.Combine(packInstance.GameDir, "saves", "personal.txt"), "personal");
+            Directory.CreateDirectory(Path.Combine(packInstance.GameDir, "LOGS")); File.WriteAllText(Path.Combine(packInstance.GameDir, "LAUNCHER_ACCOUNTS.JSON"), "private");
+            var exportItems = Modpack.ExportItems(packInstance);
+            Check("Export suggests configuration but not personal worlds", exportItems.Any(i => i.Path == "config" && i.Suggested) && exportItems.Any(i => i.Path == "saves" && !i.Suggested));
+            Check("Export excludes account files, logs and instance metadata", exportItems.All(i => !new[] { "LOGS", "LAUNCHER_ACCOUNTS.JSON", "ParityB.json", "ParityB.jar", ".kiln" }.Contains(i.Path)));
+            var output = Path.Combine(root, "export.mrpack");
+            var exported = Modpack.Export(packInstance, "Parity pack", "2.4.0", "Custom summary", new HashSet<string> { "config" }, output, new Job("Export fixture")).GetAwaiter().GetResult();
+            var exportedInfo = Modpack.Inspect(output);
+            Check("Export preserves name, version and summary", exportedInfo.Name == "Parity pack" && exportedInfo.Version == "2.4.0" && exportedInfo.Summary == "Custom summary");
+            Check("Export contains only chosen overrides", exported.Embedded == 1 && Zip.Read(output, "overrides/config/client.cfg") != null && Zip.Read(output, "overrides/saves/personal.txt") == null);
+            var beforeExport = File.ReadAllBytes(output); var cancelExport = new Job("Cancelled export"); cancelExport.Cancel();
+            Cancels("Cancelled export preserves existing archive", () => Modpack.Export(packInstance, "cancelled", "0", "", new HashSet<string> { "config" }, output, cancelExport));
+            Check("Existing export remains intact after cancellation", File.ReadAllBytes(output).SequenceEqual(beforeExport));
+            Throws("Export refuses selecting files outside the game directory", () => Modpack.Export(packInstance, "escape", "0", "", new HashSet<string> { "../outside.txt" }, output, new Job("Unsafe export")).GetAwaiter().GetResult());
+            var downloads = Path.Combine(root, "Downloads"); Directory.CreateDirectory(downloads);
+            var sourceDownload = Path.Combine(downloads, "sample mod.jar"); File.WriteAllText(sourceDownload, "verified contents"); var expectedHash = Hash.Sha1File(sourceDownload)!;
+            var destination = Path.Combine(root, "Manual", "sample mod.jar");
+            var manual = new Modpack.ManualFile("Sample", "sample mod.jar", "https://example.invalid", destination, expectedHash.ToUpperInvariant());
+            Check("Manual downloads verify hashes and move into place", Modpack.CollectManualDownloads(new[] { manual }, downloads).Count == 0 && File.Exists(destination) && !File.Exists(sourceDownload));
+            Check("Manual downloads recognize already installed files", Modpack.CollectManualDownloads(new[] { manual }, downloads).Count == 0);
+            File.WriteAllText(sourceDownload, "wrong contents"); File.Delete(destination);
+            Check("Manual downloads leave incorrect hashes untouched", Modpack.CollectManualDownloads(new[] { manual }, downloads).Count == 1 && File.Exists(sourceDownload) && !File.Exists(destination));
+            var traversalManual = manual with { FileName = "../escape.jar", Sha1 = null };
+            Check("Manual downloads reject filenames outside Downloads", Modpack.CollectManualDownloads(new[] { traversalManual }, downloads).Count == 1);
+            var candidates = new[] { new LauncherImport.Candidate { Name = "Same", ContentDir = "source-A" }, new LauncherImport.Candidate { Name = "same", ContentDir = "source-B" }, new LauncherImport.Candidate { Name = "Unsupported", ContentDir = "source-C", Unsupported = "unsupported" } };
+            var plan = LauncherImport.Plan(candidates.Concat(candidates.Take(1)), root);
+            Check("Batch import reserves distinct Windows names and skips unsupported items", plan.Count == 2 && plan.Select(p => p.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 2);
+            Check("Import names handle devices and control characters without looping", InstanceManager.ValidateName(LauncherImport.AvailableName("CON.txt", root), root) == null && InstanceManager.ValidateName(LauncherImport.AvailableName("bad\0name", root), root) == null);
             var versions = new[] { "1.0", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.11", "1.12", "1.13", "1.14", "1.15", "1.16", "1.17", "1.18", "1.19", "1.20", "1.21", "1.21.4", "1.21.5", "1.21.6", "1.21.9", "1.21.11", "26.1", "26.2", "26.3", "26.4" };
             foreach (var version in versions)
             {

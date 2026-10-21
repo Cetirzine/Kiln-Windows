@@ -9,7 +9,7 @@ namespace Kiln.App;
 internal static class KilnFileBrowser
 {
     private static string _lastFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-    public static async Task<string[]> Pick(bool folders, bool save, bool multiple, IReadOnlyList<string> filters, string name = "")
+    public static async Task<string[]> Pick(bool folders, bool save, bool multiple, IReadOnlyList<string> filters, string name = "", bool allowFolders = false)
     {
         var root = App.MainAppWindow!.Content.XamlRoot;
         var path = new TextBox { Text = Directory.Exists(_lastFolder) ? _lastFolder : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -44,7 +44,7 @@ internal static class KilnFileBrowser
         var location = new Grid { ColumnSpacing = 8 }; location.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); location.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         location.Children.Add(Ui.Button("↑", (_, _) => Navigate(Directory.GetParent(current)?.FullName ?? current))); Grid.SetColumn(path, 1); location.Children.Add(path); body.Children.Add(location);
         var shortcuts = Ui.Row();
-        foreach (var destination in new[] { (Localization.T("用户目录", "Home"), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), (Localization.T("桌面", "Desktop"), Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)), (Localization.T("下载", "Downloads"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")) })
+        foreach (var destination in new[] { (Localization.T("用户目录", "Home"), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), (Localization.T("桌面", "Desktop"), Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)), (Localization.T("下载", "Downloads"), Paths.Downloads) })
         {
             var folder = destination.Item2; shortcuts.Children.Add(Ui.Button(destination.Item1, (_, _) => Navigate(folder)));
         }
@@ -57,7 +57,7 @@ internal static class KilnFileBrowser
         Navigate(current);
         while (true)
         {
-            var dialog = new KilnDialog { XamlRoot = root, PreferredWidth = 680, Title = save ? Localization.T("另存为", "Save as") : folders ? Localization.T("选择文件夹", "Choose a folder") : Localization.T("选择文件", "Choose files"), Content = body, PrimaryButtonText = save ? Localization.T("保存", "Save") : Localization.T("选择", "Choose"), CloseButtonText = Localization.T("取消", "Cancel") };
+            var dialog = new KilnDialog { XamlRoot = root, PreferredWidth = 680, Title = save ? Localization.T("另存为", "Save as") : allowFolders ? Localization.T("选择文件夹或压缩包", "Choose folder or archive") : folders ? Localization.T("选择文件夹", "Choose a folder") : Localization.T("选择文件", "Choose files"), Content = body, PrimaryButtonText = save ? Localization.T("保存", "Save") : Localization.T("选择", "Choose"), CloseButtonText = Localization.T("取消", "Cancel") };
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return Array.Empty<string>();
             var selected = list.SelectedItems.OfType<ListViewItem>().Select(i => i.Tag as string).Where(p => p != null).Cast<string>().ToArray();
             if (save)
@@ -74,6 +74,7 @@ internal static class KilnFileBrowser
                 return new[] { destination };
             }
             if (folders) return new[] { selected.FirstOrDefault(Directory.Exists) ?? current };
+            if (allowFolders) return selected.Length > 0 ? selected.Where(p => File.Exists(p) || Directory.Exists(p)).ToArray() : new[] { current };
             var files = selected.Where(File.Exists).ToArray(); if (files.Length > 0) return files;
             if (selected.FirstOrDefault() is { } folder && Directory.Exists(folder)) Navigate(folder);
             else status.Text = Localization.T("请选择一个文件", "Choose a file");

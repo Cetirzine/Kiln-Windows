@@ -79,6 +79,8 @@ internal static class UiSmokeTest
             var versionDir = Path.Combine(fixtureRoot, "versions", "UI fixture"); Directory.CreateDirectory(versionDir);
             File.WriteAllText(Path.Combine(versionDir, "UI fixture.json"), "{\"id\":\"UI fixture\",\"mainClass\":\"test\",\"type\":\"release\",\"javaVersion\":{\"majorVersion\":21},\"releaseTime\":\"2026-10-21T00:00:00Z\"}");
             var instance = new Kiln.Core.McInstance(fixtureRoot, "UI fixture");
+            var worldDir = Path.Combine(instance.GameDir, "saves", "World with a long display name for layout checks"); Directory.CreateDirectory(worldDir);
+            File.WriteAllBytes(Path.Combine(worldDir, "level.dat"), Array.Empty<byte>());
             var packsDir = Path.Combine(instance.GameDir, "resourcepacks"); Directory.CreateDirectory(packsDir);
             using (var archive = System.IO.Compression.ZipFile.Open(Path.Combine(packsDir, "Sample pack.zip"), System.IO.Compression.ZipArchiveMode.Create)) { using var writer = new StreamWriter(archive.CreateEntry("pack.mcmeta").Open()); writer.Write("{}"); }
             var shotsDir = Path.Combine(instance.GameDir, "screenshots"); Directory.CreateDirectory(shotsDir);
@@ -96,6 +98,8 @@ internal static class UiSmokeTest
             await Show(new ContentFilesPage(instance, "screenshots"));
             var gallery = Descendants(root.Content).OfType<Grid>().Single(g => g.Name == "ScreenshotGallery");
             Check("Screenshots use an adaptive multi-column gallery", gallery.ColumnDefinitions.Count >= 2 && gallery.Children.Count == 3);
+            await WorkflowUiChecks.Run(window, root, instance, fixtureRoot, (name, passed) => Check(name, passed));
+            await InstanceLayoutUiChecks.Run(window, instance, (name, passed) => Check(name, passed));
             Ui.SelectTab("instance", 0); await Show(new InstanceDetailPage(instance));
             window.Closed += (_, _) => { if (Path.GetFullPath(fixtureRoot).StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) && Directory.Exists(fixtureRoot)) { try { Directory.Delete(fixtureRoot, true); } catch { } } };
             window.Title = "Kiln · UI 检查";
@@ -105,6 +109,7 @@ internal static class UiSmokeTest
             results.Add(new { name = "UI regression exception", passed = false, detail = e.ToString() });
             File.WriteAllText(reportPath, JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
         }
+        finally { window.SetDiagnosticsRunning(false); }
     }
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)

@@ -19,6 +19,26 @@ public static class LauncherImport
     };
 
     public sealed record Loader(string Kind, string Version);
+    public sealed record PlanItem(Candidate Candidate, string Name);
+    public static void ReleaseTemporary(Candidate candidate)
+    {
+        if (candidate.Temporary == null) return;
+        var path = Path.GetFullPath(candidate.Temporary);
+        if (!string.Equals(Path.GetDirectoryName(path), Path.GetFullPath(Paths.Cache), StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(path).StartsWith("import-", StringComparison.Ordinal)) return;
+        try { Directory.Delete(path, recursive: true); } catch { }
+    }
+    public static IReadOnlyList<PlanItem> Plan(IEnumerable<Candidate> candidates, string folder)
+    {
+        var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var plan = new List<PlanItem>();
+        foreach (var candidate in candidates.DistinctBy(c => c.Id, StringComparer.OrdinalIgnoreCase).Where(c => c.Unsupported == null))
+        {
+            var baseName = AvailableName(candidate.Name, folder); var name = baseName; var index = 2;
+            while (!reserved.Add(name)) name = $"{baseName} ({index++})";
+            plan.Add(new PlanItem(candidate, name));
+        }
+        return plan;
+    }
 
     public sealed class Candidate
     {
@@ -159,9 +179,9 @@ public static class LauncherImport
                 "There's no instance.cfg in the archive, so it isn't a Prism or MultiMC instance export"));
         var tmp = Path.Combine(Paths.Cache, "import-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tmp);
-        Zip.ExtractAll(archive, tmp);
         try
         {
+            Zip.ExtractAll(archive, tmp);
             var root = tmp;
             var parts = entry.Split('/');
             foreach (var p in parts[..^1]) root = Path.Combine(root, p);
@@ -399,8 +419,7 @@ public static class LauncherImport
         }
         finally
         {
-            if (c.Temporary != null)
-                try { Directory.Delete(c.Temporary, recursive: true); } catch { }
+            ReleaseTemporary(c);
         }
     }
 
@@ -468,9 +487,12 @@ public static class LauncherImport
     /// 不与已有版本重名的名称
     public static string AvailableName(string name, string folder)
     {
-        var chars = name.Trim().Select(ch => "/\\:!*?\"<>|".Contains(ch) ? '-' : ch);
-        var base0 = new string(chars.ToArray()).TrimStart('.');
+        var chars = name.Trim().Select(ch => char.IsControl(ch) || "/\\:!*?\"<>|".Contains(ch) ? '-' : ch);
+        var base0 = new string(chars.ToArray()).Trim('.').Trim();
         if (base0.Length == 0) base0 = "Imported";
+        if (base0.Length > 200) base0 = base0[..200].TrimEnd('.', ' ');
+        var deviceName = base0.Split('.')[0].ToUpperInvariant();
+        if (deviceName is "CON" or "PRN" or "AUX" or "NUL" || System.Text.RegularExpressions.Regex.IsMatch(deviceName, "^(COM|LPT)[1-9]$")) base0 = "Imported - " + base0;
         var n = base0;
         var i = 2;
         while (InstanceManager.ValidateName(n, folder) != null) { n = $"{base0} ({i})"; i++; }

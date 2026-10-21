@@ -37,7 +37,8 @@ public sealed class ModManager : UserControl
         toolbar.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); toolbar.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var filters = new Grid { Name = "ModFilters", ColumnSpacing = 10 };
         filters.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); filters.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
-        filters.Children.Add(Ui.SearchField(_search)); _filter.Width = double.NaN; _filter.MinWidth = 0; _filter.HorizontalAlignment = HorizontalAlignment.Stretch; _filter.Height = 28; Grid.SetColumn(_filter, 1); filters.Children.Add(_filter); toolbar.Children.Add(filters);
+        var searchField = Ui.SearchField(_search); searchField.Name = "ModSearchField"; searchField.HorizontalAlignment = HorizontalAlignment.Stretch;
+        filters.Children.Add(searchField); _filter.Width = double.NaN; _filter.MinWidth = 0; _filter.HorizontalAlignment = HorizontalAlignment.Stretch; _filter.Height = 28; Grid.SetColumn(_filter, 1); filters.Children.Add(_filter); toolbar.Children.Add(filters);
         var actions = new[] {
             Ui.Button(T("添加…", "Add…"), async (_, _) => await AddFiles()),
             Ui.Button(T("下载 Mod", "Download mods"), (_, _) => MainWindow.Current!.NavigateTo("mods")),
@@ -49,7 +50,7 @@ public sealed class ModManager : UserControl
         {
             actionRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var button = actions[index]; var title = button.Content?.ToString() ?? "";
-            button.Content = new TextBlock { Text = title, FontSize = 12.5, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis }; button.MinWidth = 0; button.HorizontalAlignment = HorizontalAlignment.Stretch; ToolTipService.SetToolTip(button, title);
+            button.Content = new TextBlock { Text = title, FontSize = 12.5, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis }; button.MinWidth = 0; button.Height = 28; button.HorizontalAlignment = HorizontalAlignment.Stretch; button.HorizontalContentAlignment = HorizontalAlignment.Center; ToolTipService.SetToolTip(button, title);
             Grid.SetColumn(button, index); actionRow.Children.Add(button);
         }
         Grid.SetRow(actionRow, 1); toolbar.Children.Add(actionRow); root.Children.Add(toolbar);

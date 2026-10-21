@@ -30,6 +30,15 @@ internal static class NetworkSmoke
             var valid = File.Exists(path) && Hash.Sha1File(path) == version.Sha1;
             Console.WriteLine($"{(valid ? "[OK]" : "[FAIL]")} Search → versions → download → SHA1: {version.FileName} ({new FileInfo(path).Length} bytes)");
             if (!valid) failures++;
+            var instanceDir = Path.Combine(folder, "versions", "Export network fixture"); Directory.CreateDirectory(instanceDir);
+            File.WriteAllText(Path.Combine(instanceDir, "Export network fixture.json"), "{\"id\":\"26.2\",\"mainClass\":\"test\",\"type\":\"release\",\"releaseTime\":\"2026-06-16T00:00:00Z\"}");
+            var exportInstance = new McInstance(folder, "Export network fixture"); var setup = exportInstance.Setup; setup.Isolation = true; LauncherSettings.Shared.SaveInstanceSetup(setup, exportInstance.Dir);
+            var mods = Path.Combine(exportInstance.GameDir, "mods"); Directory.CreateDirectory(mods); File.Copy(path, Path.Combine(mods, Path.GetFileName(path)));
+            var packPath = Path.Combine(folder, "network-export.mrpack");
+            var exported = await Modpack.Export(exportInstance, "Network export", "1.2.3", "Export smoke test", new HashSet<string> { "mods" }, packPath, new Job("Export network fixture"));
+            var pack = Modpack.Inspect(packPath); var entry = pack.Manifest["files"].Array.Single();
+            if (exported.Linked != 1 || exported.Embedded != 0 || entry["hashes"]["sha1"].String != version.Sha1 || entry["hashes"]["sha512"].String is not { Length: 128 } || Zip.List(packPath).Any(p => p.StartsWith("overrides/mods/"))) throw new Exception("Export did not link the known Modrinth file");
+            Console.WriteLine("[OK] Export known Modrinth mod → download link, SHA1/SHA512 manifest, no duplicate JAR");
             using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
             try { await Modrinth.Search("cancel", Modrinth.ProjectType.Mod, null, null, ct: cancellation.Token); Console.WriteLine("[FAIL] Cancelled search completed"); failures++; }
             catch (OperationCanceledException) { Console.WriteLine("[OK] Superseded search cancels without an error dialog"); }

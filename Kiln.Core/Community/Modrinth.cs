@@ -191,7 +191,7 @@ public static class Modrinth
     }
 
     /// 按 SHA-1 查找文件对应的版本（一次请求查询多个文件）
-    public static async Task<Dictionary<string, Json>> VersionsByHash(IReadOnlyList<string> sha1s)
+    public static async Task<Dictionary<string, Json>> VersionsByHash(IReadOnlyList<string> sha1s, CancellationToken ct = default)
     {
         if (sha1s.Count == 0) return new();
         var body = Json.From(new Dictionary<string, Json>
@@ -199,7 +199,7 @@ public static class Modrinth
             ["hashes"] = Json.From(sha1s.Select(Json.Of).ToList()),
             ["algorithm"] = Json.Of("sha1"),
         }).Data(false);
-        var (code, j) = await Net.request($"{Api}/version_files", body: body, contentType: "application/json");
+        var (code, j) = await Net.request($"{Api}/version_files", body: body, contentType: "application/json", ct: ct);
         if (code != 200) throw new LauncherException($"Modrinth HTTP {code}");
         return j.Object.ToDictionary(kv => kv.Key, kv => kv.Value);
     }
