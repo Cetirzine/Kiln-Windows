@@ -127,7 +127,7 @@ public sealed class AboutPage : Page
         var panels = Ui.Col(Ui.Card("", app), Ui.Card(T("致谢", "Thanks"), thanks, inspiration), Ui.Card(T("法律信息", "Legal"), legal, buy, Ui.Text(T("许可：PolyForm Strict 1.0.0", "License: PolyForm Strict 1.0.0"), 11.5))); panels.Spacing = 14;
         var root = new Grid { RowSpacing = 14 };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        root.Children.Add(Ui.Header(T("关于", "About"), Ui.Button(T("检查更新", "Check for updates"), async (_, _) => await CheckUpdate())));
+        root.Children.Add(Ui.Header(T("关于", "About"), Ui.Button(T("检查更新", "Check for updates"), async (sender, _) => { var button = (Button)sender; button.IsEnabled = false; try { await CheckUpdate(); } finally { button.IsEnabled = true; } })));
         var scroll = Ui.Scroll(panels); Grid.SetRow(scroll, 1); root.Children.Add(scroll); Content = root;
     }
 

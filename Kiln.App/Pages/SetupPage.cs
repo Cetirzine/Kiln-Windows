@@ -143,7 +143,7 @@ public sealed class SetupPage : Page
         Ui.Card(T("通知与快捷方式", "Notifications & shortcuts"), Ui.Setting(T("系统通知", "System notifications"), Ui.Toggle(_s.SystemNotifications, "", "", v => _s.SystemNotifications = v)),
             Ui.Text(T("在版本菜单中创建桌面快捷方式或复制 kiln://launch/版本名 链接。", "Create desktop shortcuts or copy kiln://launch/<name> links from an instance menu."), 11.5)),
         Ui.Card(T("启动器窗口", "Launcher window"), Ui.Setting(T("窗口大小", "Window size"), Ui.Combo(new[] { T("紧凑 · 920 × 620", "Compact · 920 × 620"), T("标准 · 1040 × 680", "Standard · 1040 × 680"), T("宽敞 · 1200 × 800", "Roomy · 1200 × 800") }, _s.LauncherWindowPreset, i => MainWindow.Current!.ApplyWindowPreset(i)))),
-        Ui.Card(T("更新", "Updates"), Ui.Setting(T("自动检查更新", "Check for updates automatically"), Ui.Toggle(_s.AutoCheckUpdates, "", "", v => _s.AutoCheckUpdates = v)), Ui.Button(T("立即检查", "Check now"), (_, _) => MainWindow.Current!.NavigateTo("about"))),
+        Ui.Card(T("更新", "Updates"), Ui.Setting(T("自动检查更新", "Check for updates automatically"), Ui.Toggle(_s.AutoCheckUpdates, "", "", v => _s.AutoCheckUpdates = v)), Ui.Button(T("立即检查", "Check now"), async (sender, _) => { var button = (Button)sender; button.IsEnabled = false; try { await AppUpdates.Check(MainWindow.Current!, true); } finally { button.IsEnabled = true; } })),
         Ui.Card(T("数据与日志", "Data & logs"), Ui.Row(Open(T("打开日志文件夹", "Open log folder"), Paths.Logs), Open(T("打开数据文件夹", "Open data folder"), Paths.Support)), Ui.Setting(T("调试日志", "Debug log"), Ui.Toggle(_s.DebugLog, "", "", v => _s.DebugLog = v))));
 
     private static Button Open(string title, string path) => Ui.Button(title, async (_, _) => await Windows.System.Launcher.LaunchFolderPathAsync(path));

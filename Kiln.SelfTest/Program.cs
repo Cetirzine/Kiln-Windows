@@ -9,6 +9,10 @@ using System.Diagnostics;
 
 if (args.Length > 0 && args[0] == "--parity-test") return await ParityTests.Run();
 if (args.Length > 0 && args[0] == "--network-smoke") return await NetworkSmoke.Run();
+if (args.Length >= 2 && args[0] == "--updater-regression") return await UpdaterVerification.Regression(args[1]);
+if (args.Length >= 3 && args[0] == "--updater-live") return await UpdaterVerification.Live(args[1], args[2]);
+if (args.Length >= 2 && args[0] == "--updater-worker") return await UpdaterVerification.Worker(args[1]);
+if (args.Length >= 2 && args[0] == "--updater-check") return await UpdaterVerification.CheckOnly(args[1]);
 
 if (args.Length >= 3 && args[0] == "--launch-test")
 {

@@ -3,7 +3,7 @@
 基准：本工作区 `kiln-launcher/Sources`，2026-10-20。目标 Windows x64。
 
 状态：正在实施，未达到完整验收。源码中有对应方法不代表已通过真实运行验证。
-本轮追加验证：121 项核心回归、89 项原生 UI 检查、15 项 Windows 集成检查通过；Modrinth 与 CurseForge 公共代理的搜索、版本、下载、校验通过，实际 Mod 导出引用链接和 SHA-1/SHA-512 清单通过。Java、账号面板、关于页、开始页、导出与导入弹窗、账号入口和 26.3 坐姿已在窗口中检查；三语言 / 三档窗口检查覆盖工作流弹窗内边界、底部同排按钮、实例卡片、Mod 搜索及长账号名标题栏的实际边缘，不代表其余页面的全量截图验收，不以编译通过替代。
+本轮追加验证：135 项核心回归、94 项原生 UI 检查、17 项 Windows 集成检查通过；Modrinth 与 CurseForge 公共代理的搜索、版本、下载、校验通过，实际 Mod 导出引用链接和 SHA-1/SHA-512 清单通过。Java、账号面板、关于页、开始页、导出与导入弹窗、账号入口和 26.3 坐姿已在窗口中检查；三语言 / 三档窗口检查覆盖工作流弹窗内边界、底部同排按钮、实例卡片、Mod 搜索及长账号名标题栏的实际边缘，不代表其余页面的全量截图验收，不以编译通过替代。
 macOS / Apple Silicon / ARM64 专属优化不移植：Metal、Rosetta、LWJGL arm64 替换、GLFW macOS 补丁、Dock 与 QoS；通用 JVM/CDS/AOT/下载优化保留。
 
 ## 已确认的问题与处理
@@ -31,6 +31,7 @@ macOS / Apple Silicon / ARM64 专属优化不移植：Metal、Rosetta、LWJGL ar
 | ProfileSheet | 改名可用性检查存在过期响应、对话框嵌套风险 | 已加代次检查、可用状态控制按钮与自定义弹窗；待交互验收 |
 | SetupPage.swift | 缺五标签、Java 管理、额外参数等；控件列不齐 | 已重写五标签与缺失设置，统一 230pt 名称列 / 320pt 控件；待复测 |
 | SystemIntegration.swift | 启动链接丢失存档/服务器参数，重复打开创建新窗口，快捷方式覆盖同名文件且无实例图标；缺真实通知、任务进度、最近版本菜单 | 已补链接统一解析、单实例转交与窗口恢复、原生 .lnk/实例图标/同名避让、右下角轻提示、原生通知及任务栏进度/数量角标；通知弹出和点击返回任务页由用户确认，最近版本入口仍待补 |
+| Updater.swift | 失败替换仍误报成功、删除旧备份；特殊路径无法重启；断流无闲置超时，匿名 API 限流后无法检查 | 0.2.14w 修复回滚、唯一目录/脚本、字面路径及后台校验，新增超时重试和官方发布页后备；真实隔离副本下载、校验、替换、重启已通过，弹窗三个动作分别验证。额外的应用内按钮自动安装被审批策略拒绝，边界与报告见 AUTO-UPDATE-VERIFICATION.md |
 | FolderWatcher.swift | 原版外部文件变更刷新；Windows 无统一实现 | 已给版本列表/Mod 管理增加监视，其他页面待补 |
 | PCL2（Windows 附加功能） | 旧自检直接写入 Pcl2TakenOver 导致弹窗跳过 | 已新增实际 UI 确认标记及设置手动入口，待弹窗验收 |
 | 发布体积 | v0.2.10 ZIP 93,733,936 bytes，捆入 ONNX/DirectML/AI/Search | 已改为 WinUI 必要依赖；自包含预览 ZIP 约 68.9 MB，减少约 26%；未删运行时。程序名及产品元数据统一为 Kiln，待独立运行/自动更新验收 |
@@ -70,6 +71,8 @@ macOS / Apple Silicon / ARM64 专属优化不移植：Metal、Rosetta、LWJGL ar
 UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、InstanceContent、AccountUI、SetupPage、AboutPage、ImportUI、ModpackUI、IconPicker、BlockIcon、BlockTextures、DotScene/Classic/Drops/Versions、LogoMark。App 层：KilnApp、Intents、SystemIntegration、FolderWatcher、Snapshot、SelfTest、Main。
 
 ## 必须完成的验证
+
+0.2.14w 自动更新修复与隔离验收：见 [AUTO-UPDATE-VERIFICATION.md](AUTO-UPDATE-VERIFICATION.md)。程序包为 `publish/Kiln-v0.2.14w-verified/`；135 项核心、94 项 UI、17 项系统集成、11 项更新回归与 8 项真实联网替换检查通过。应用内更新弹窗与安装/重启链路分别验证；额外的单次 UI 自动安装测试被审批策略拒绝，不能宣称该项已通过。设置、控件的其余原版对照继续进行，真实游戏与账号验收仍未完成。
 
 0.2.13w 系统集成与任务反馈：
 

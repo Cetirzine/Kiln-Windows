@@ -353,7 +353,7 @@ public sealed class DownloadEngine
     }
 
     /// 下载到临时文件并返回其位置
-    public async Task<string> Download(Uri url, DownloadCounter? counter, CancellationToken ct)
+    public async Task<string> Download(Uri url, DownloadCounter? counter, CancellationToken ct, TimeSpan? idleTimeout = null)
     {
         long written = 0;
         var tmp = Path.Combine(Paths.Cache, "dl-" + Guid.NewGuid().ToString("N"));
@@ -369,15 +369,26 @@ public sealed class DownloadEngine
             await using var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true);
             await using var src = await resp.Content.ReadAsStreamAsync(ct);
             var buf = new byte[1 << 16];
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
             while (true)
             {
-                var n = await src.ReadAsync(buf.AsMemory(0, buf.Length), ct);
+                idle.CancelAfter(idleTimeout ?? TimeSpan.FromSeconds(30));
+                int n;
+                try { n = await src.ReadAsync(buf.AsMemory(0, buf.Length), idle.Token); }
+                catch (OperationCanceledException error) when (!ct.IsCancellationRequested) { throw new TimeoutException(T.Invoke("下载连接未继续传输数据", "The download connection stopped sending data"), error); }
+                idle.CancelAfter(Timeout.InfiniteTimeSpan);
                 if (n <= 0) break;
                 await fs.WriteAsync(buf.AsMemory(0, n), ct);
                 written += n;
                 counter?.AddBytes(n);
             }
             await fs.FlushAsync(ct);
+        }
+        catch (OperationCanceledException error) when (!ct.IsCancellationRequested)
+        {
+            try { File.Delete(tmp); } catch { }
+            counter?.AddBytes(-written);
+            throw new TimeoutException(T.Invoke("下载连接超时", "The download connection timed out"), error);
         }
         catch
         {

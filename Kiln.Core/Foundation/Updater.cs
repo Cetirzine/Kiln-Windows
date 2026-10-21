@@ -6,7 +6,7 @@ namespace Kiln.Core;
 /// 启动器自动更新：从 GitHub Release 获取新版本，校验后替换自身。
 /// 原版使用 DMG + bash 替换脚本；Windows 版使用 zip 资产 + PowerShell 替换脚本，流程一致：
 /// 等待当前进程退出 → 备份旧版 → 换上新版 → 失败时恢复 → 重新打开。
-public static class Updater
+public static partial class Updater
 {
     public const string Repository = "Cetirzine/Kiln-Windows";
     public const string ExeName = AppInfo.ShortName + ".exe";
@@ -24,11 +24,19 @@ public static class Updater
     // MARK: 检查
 
     /// 获取最新版本；比当前版本新时返回 Release
-    public static async Task<Release?> Check()
+    public static async Task<Release?> Check(string? currentVersion = null, CancellationToken ct = default)
     {
-        var j = Json.Parse(await Net.data(
-            new[] { $"https://api.github.com/repos/{Repository}/releases/latest" }, fresh: true));
-        return ParseRelease(j, AppInfo.Version);
+        currentVersion ??= AppInfo.Version;
+        try
+        {
+            var j = Json.Parse(await Net.data(new[] { $"https://api.github.com/repos/{Repository}/releases/latest" }, fresh: true, ct: ct));
+            return ParseRelease(j, currentVersion);
+        }
+        catch (Exception e) when (!ct.IsCancellationRequested && e is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException)
+        {
+            Log.log("[Update] GitHub API unavailable; checking the official release page: " + e.Friendly());
+            return await CheckWebsite(currentVersion, ct);
+        }
     }
 
     public static Release? ParseRelease(Json j, string currentVersion)
@@ -91,9 +99,13 @@ public static class Updater
     {
         try
         {
-            var probe = Path.Combine(appDir, ".kiln-write-test");
-            File.WriteAllText(probe, "");
-            File.Delete(probe);
+            appDir = ApplicationDirectory(appDir);
+            foreach (var directory in new[] { appDir, Path.GetDirectoryName(appDir)! })
+            {
+                var probe = Path.Combine(directory, ".kiln-write-" + Guid.NewGuid().ToString("N"));
+                using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write)) { }
+                File.Delete(probe);
+            }
         }
         catch
         {
@@ -106,112 +118,89 @@ public static class Updater
     /// 下载并校验新版本，复制到当前程序旁边，返回准备好的新目录位置
     public static async Task<string> Prepare(Release release, string appDir, Job? job = null)
     {
-        var zip = Path.Combine(Paths.Cache, release.ZipName);
-        try { File.Delete(zip); } catch { }
-        var item = new DownloadItem(release.ZipUrl, zip, size: release.Size) { Urls = new[] { release.ZipUrl } };
-        await Downloader.Run(new[] { item }, job, checkHash: false);
+        appDir = ApplicationDirectory(appDir);
+        var token = job?.Token ?? default; token.ThrowIfCancellationRequested();
+        var expected = release.Sha256;
+        if (expected == null || expected.Length != 64 || !expected.All(Uri.IsHexDigit))
+            throw Verification(T.Invoke("发布包缺少有效的 SHA-256 摘要", "The release has no valid SHA-256 digest"));
+        var work = Path.Combine(Paths.Cache, "update-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(work);
+        var zip = Path.Combine(work, "update.zip");
+        var staged = Path.Combine(Path.GetDirectoryName(appDir)!, ".Kiln-update-" + Guid.NewGuid().ToString("N"));
+        var prepared = false;
         try
         {
-            // 校验 SHA-256（GitHub 为每个附件提供摘要）
-            if (release.Sha256 is { } expected)
+            job?.Enter(T.Invoke("下载更新", "Downloading update"), 0, 3);
+            var item = new DownloadItem(release.ZipUrl, zip, size: release.Size) { Urls = new[] { release.ZipUrl } };
+            await Downloader.Run(new[] { item }, job, checkHash: false);
+            token.ThrowIfCancellationRequested();
+            job?.Enter(T.Invoke("校验更新", "Verifying update"), 1, 3);
+            await Task.Run(() =>
             {
-                var actual = Hash.Sha256File(zip);
-                if (actual == null || actual != expected)
+                var actual = Hash.Sha256File(zip); token.ThrowIfCancellationRequested();
+                if (actual == null || !string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
                     throw Verification(T.Invoke("SHA-256 不一致", "SHA-256 mismatch"));
-            }
-
-            // 解压 zip，取出程序目录
-            var mount = Path.Combine(Paths.Cache, "update-extract-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(mount);
-            try
-            {
+                var mount = Path.Combine(work, "extract");
                 Zip.ExtractAll(zip, mount);
-                // 新版可能在压缩包根目录或唯一的一级子目录中
-                var newApp = Directory.EnumerateFiles(mount, ExeName, SearchOption.AllDirectories)
-                    .Select(Path.GetDirectoryName)
-                    .FirstOrDefault();
-                if (newApp == null)
+                token.ThrowIfCancellationRequested();
+                var candidates = Directory.EnumerateFiles(mount, ExeName, SearchOption.AllDirectories).ToArray();
+                if (candidates.Length != 1)
                     throw Verification(T.Invoke("安装包中没有找到应用", "No app found in the update"));
-                var versionInfo = FileVersionInfo.GetVersionInfo(Path.Combine(newApp, ExeName));
+                var newApp = Path.GetDirectoryName(candidates[0])!;
+                var versionInfo = FileVersionInfo.GetVersionInfo(candidates[0]);
                 if (versionInfo.ProductName != AppInfo.ShortName)
                     throw Verification(T.Invoke("应用标识不符", "Product name mismatch"));
                 if (versionInfo.ProductVersion is not { } pv || !string.Equals(pv.Split('+')[0], release.Version, StringComparison.Ordinal))
                     throw Verification(T.Invoke("版本号不符", "Version mismatch"));
-
-                // 复制到当前程序旁边（同一卷上，替换时只需重命名）
-                var staged = Path.Combine(Path.GetDirectoryName(appDir)!, $".Kiln-update-{release.Version}");
-                try { Directory.Delete(staged, recursive: true); } catch { }
-                CopyDirectory(newApp, staged);
-                // Keep the installed EXE's uninstaller across ZIP-based automatic updates.
+                foreach (var required in new[] { "Kiln.dll", "Kiln.Core.dll", "Microsoft.ui.xaml.dll", "webp.dll", "Assets/AppIcon.ico" })
+                    if (!File.Exists(Path.Combine(newApp, required))) throw Verification(T.Invoke($"缺少 {required}", $"Missing {required}"));
+                job?.Enter(T.Invoke("准备替换", "Preparing replacement"), 2, 3);
+                CopyDirectory(newApp, staged, token);
                 foreach (var file in Directory.EnumerateFiles(appDir, "unins*", SearchOption.TopDirectoryOnly))
+                {
+                    token.ThrowIfCancellationRequested();
                     if (Path.GetExtension(file).ToLowerInvariant() is ".exe" or ".dat" or ".msg")
                         File.Copy(file, Path.Combine(staged, Path.GetFileName(file)), overwrite: true);
-                return staged;
-            }
-            finally
-            {
-                try { Directory.Delete(mount, recursive: true); } catch { }
-            }
+                }
+            }, token);
+            token.ThrowIfCancellationRequested(); prepared = true; return staged;
         }
         finally
         {
-            try { File.Delete(zip); } catch { }
+            DeleteOwned(work, Paths.Cache, "update-");
+            if (!prepared) Discard(staged, appDir);
         }
     }
 
-    private static void CopyDirectory(string src, string dest)
+    private static void CopyDirectory(string src, string dest, CancellationToken token)
     {
         Directory.CreateDirectory(dest);
         foreach (var file in Directory.EnumerateFiles(src))
-            File.Copy(file, Path.Combine(dest, Path.GetFileName(file)), overwrite: true);
+        { token.ThrowIfCancellationRequested(); File.Copy(file, Path.Combine(dest, Path.GetFileName(file)), overwrite: true); }
         foreach (var dir in Directory.EnumerateDirectories(src))
-            CopyDirectory(dir, Path.Combine(dest, Path.GetFileName(dir)));
+            CopyDirectory(dir, Path.Combine(dest, Path.GetFileName(dir)), token);
     }
 
-    // MARK: 替换
-
-    /// 生成替换脚本：等待当前进程退出 → 备份旧版 → 换上新版 → 失败时恢复 → 重新打开
-    public static string ReplaceScript(string staged, string appDir, int pid, bool relaunch)
+    private static string ApplicationDirectory(string path)
     {
-        static string Q(string s) => "'" + s.Replace("'", "''") + "'";
-        var backup = Path.Combine(Path.GetDirectoryName(appDir)!, ".Kiln-previous");
-        return $@"
-# 由 Kiln 自动更新生成
-Wait-Process -Id {pid} -ErrorAction SilentlyContinue
-if (Test-Path {Q(backup)}) {{ Remove-Item -Recurse -Force {Q(backup)} }}
-$ok = $false
-try {{
-    Move-Item {Q(appDir)} {Q(backup)}
-    Move-Item {Q(staged)} {Q(appDir)}
-    $ok = $true
-}} catch {{
-    # 替换失败：恢复旧版
-    if (-not (Test-Path {Q(appDir)})) {{ Move-Item {Q(backup)} {Q(appDir)} }}
-    Remove-Item -Recurse -Force {Q(staged)} -ErrorAction SilentlyContinue
-}}
-if ($ok) {{ Remove-Item -Recurse -Force {Q(backup)} -ErrorAction SilentlyContinue }}
-{(relaunch ? $"Start-Process {Q(Path.Combine(appDir, ExeName))}" : "")}
-";
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        if (Directory.GetParent(full) == null || full == Path.GetPathRoot(full)) throw new ArgumentException("The app directory cannot be a volume root.");
+        return full;
     }
-
-    /// 启动替换脚本（脱离当前进程运行），调用方随后退出应用
-    public static void LaunchReplacement(string staged, string appDir, bool relaunch = true)
+    private static void ValidateSibling(string staged, string appDir)
     {
-        var script = Path.Combine(Paths.Cache, "kiln-update.ps1");
-        File.WriteAllText(script, ReplaceScript(staged, appDir,
-            Environment.ProcessId, relaunch), new UTF8Encoding(false));
-        var p = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{script}\"",
-                UseShellExecute = true,
-                CreateNoWindow = true,
-            },
-        };
-        p.Start();
-        Log.log($"[Update] 已启动替换脚本：{Path.GetFileName(staged)} → {appDir}");
+        appDir = ApplicationDirectory(appDir); staged = ApplicationDirectory(staged);
+        if (!string.Equals(Path.GetDirectoryName(staged), Path.GetDirectoryName(appDir), StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(staged, appDir, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(staged).StartsWith(".Kiln-update-", StringComparison.Ordinal))
+            throw new ArgumentException("The staged update must be an owned sibling of the app directory.");
     }
+    private static void DeleteOwned(string path, string parent, string prefix)
+    {
+        var full = ApplicationDirectory(path);
+        if (!string.Equals(Path.GetDirectoryName(full), Path.TrimEndingDirectorySeparator(Path.GetFullPath(parent)), StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(full).StartsWith(prefix, StringComparison.Ordinal)) throw new ArgumentException("Unexpected update cleanup path.");
+        try { if (Directory.Exists(full)) Directory.Delete(full, recursive: true); } catch { }
+    }
+    public static void Discard(string staged, string appDir)
+    { ValidateSibling(staged, appDir); DeleteOwned(staged, Path.GetDirectoryName(ApplicationDirectory(appDir))!, ".Kiln-update-"); }
+
 }
 

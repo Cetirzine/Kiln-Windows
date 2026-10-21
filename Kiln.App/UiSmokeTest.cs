@@ -105,6 +105,7 @@ internal static class UiSmokeTest
             await HintUiChecks.Run(window, (name, passed) => Check(name, passed));
             await SystemUiChecks.Run(window, fixtureRoot, (name, passed) => Check(name, passed));
             await AccountUiChecks.Run(window, fixtureRoot, (name, passed) => Check(name, passed));
+            await UpdateUiChecks.Run(window, (name, passed) => Check(name, passed));
             Check("No unhandled UI exceptions during native regression", App.DiagnosticErrors.Count == 0, App.DiagnosticErrors);
             Ui.SelectTab("instance", 0); await Show(new InstanceDetailPage(instance));
             window.Closed += (_, _) => { if (Path.GetFullPath(fixtureRoot).StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) && Directory.Exists(fixtureRoot)) { try { Directory.Delete(fixtureRoot, true); } catch { } } };

@@ -39,6 +39,13 @@ internal static class SystemUiChecks
             catch (LauncherException) { check("Updater refuses " + state + " games", true); }
         }
         AppUpdates.EnsureIdle(new[] { new GameProcess("Exited update fixture") { State = GameProcess.GameState.Exited } });
+        var app = Path.Combine(fixtureRoot, "Kiln");
+        foreach (var game in new[] { app, Path.Combine(app, ".minecraft") })
+        {
+            try { AppUpdates.EnsureDataOutsideApp(app, new[] { game }); check("Updater protects game data inside its app directory: " + (game == app ? "root" : "child"), false); }
+            catch (LauncherException) { check("Updater protects game data inside its app directory: " + (game == app ? "root" : "child"), true); }
+        }
+        AppUpdates.EnsureDataOutsideApp(app, new[] { Path.Combine(fixtureRoot, "Kiln-games") });
         check("Update notes follow the original plain-text limit", AppUpdates.PlainNotes("# 标题\n**修复** [链接](https://example.invalid) `code`\n---\nEnglish") == "标题\n修复 链接 code" && AppUpdates.PlainNotes(new string('中', 701)).Length == 701);
     }
 }
