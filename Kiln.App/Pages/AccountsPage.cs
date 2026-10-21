@@ -66,7 +66,9 @@ public sealed class AccountsPage : Page
             var labels = Ui.Col(Ui.Text(account.Name, 13, FontWeights.SemiBold), Ui.Text(account.TypeText + (account.NeedsLogin == true ? T(" · 需要重新登录", " · Needs to sign in again") : ""), 11.5)); labels.Spacing = 2;
             var row = new Grid { ColumnSpacing = 8, Padding = new Thickness(8, 7, 8, 7), Background = account.Id == store.Selected?.Id ? Ui.Brush("KilnPanelSecondary") : null };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var select = new Button { Content = labels, HorizontalContentAlignment = HorizontalAlignment.Left, HorizontalAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(0), Style = (Style)Application.Current.Resources["KilnNavigationButton"] };
+            var avatar = new AccountAvatar(32); avatar.Update(account);
+            var identity = Ui.Row(avatar, labels); identity.Spacing = 10;
+            var select = new Button { Content = identity, HorizontalContentAlignment = HorizontalAlignment.Left, HorizontalAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(0), Style = (Style)Application.Current.Resources["KilnNavigationButton"] };
             select.Click += async (_, _) => { if (account.NeedsLogin == true) { if (account.Kind == Account.AccountKind.Microsoft) await AddMicrosoft(); else await AddYggdrasil(account); } else { store.Select(account); Reload(); MainWindow.Current!.AccountChanged(); } };
             row.Children.Add(select);
             var more = new Button { Content = "···", Padding = new Thickness(6, 2, 6, 2) }; Grid.SetColumn(more, 1); row.Children.Add(more);

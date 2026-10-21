@@ -116,7 +116,7 @@ public sealed class GameDownloadPage : UserControl
                 LauncherSettings.Shared.SelectedInstance = instanceName; job.State = Job.JobState.Success; error.Text = T("安装完成", "Installed");
             }
             catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; error.Text = T("已取消", "Cancelled"); }
-            catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); error.Text = e.Friendly(); }
+            catch (Exception e) { job.Fail(e.Friendly()); error.Text = e.Friendly(); }
             finally { _installing = false; _versions.IsEnabled = true; bodyHost.IsEnabled = true; Filter(); }
         }); installButton.HorizontalAlignment = HorizontalAlignment.Stretch;
         installButton.Background = Ui.Brush("KilnAccent"); installButton.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White); installButton.Height = 32;

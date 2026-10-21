@@ -63,7 +63,7 @@ internal static class SkinEditor
             catch (Exception e) { status.Text = e.Friendly(); }
             body.Children.Add(Ui.Button(T("恢复默认皮肤", "Reset skin"), async (_, _) =>
             {
-                try { token ??= (await AccountStore.Shared.Login(account)).AccessToken; if (original != null) Skins.AddToLibrary(original, profile?.Slim ?? false, account.Name); await Skins.Reset(token); status.Text = T("已恢复默认皮肤", "Skin reset"); }
+                try { token ??= (await AccountStore.Shared.Login(account)).AccessToken; if (original != null) Skins.AddToLibrary(original, profile?.Slim ?? false, account.Name); await Skins.Reset(token); AccountAvatars.Invalidate(); MainWindow.Current?.AccountChanged(); status.Text = T("已恢复默认皮肤", "Skin reset"); }
                 catch (Exception e) { status.Text = e.Friendly(); }
             }));
         }
@@ -100,6 +100,7 @@ internal static class SkinEditor
                     }
                     AccountStore.Shared.SetSkin(account, skin);
                 }
+                AccountAvatars.Invalidate(); MainWindow.Current?.AccountChanged();
                 return;
             }
             catch (Exception e) { status.Text = e.Friendly(); }

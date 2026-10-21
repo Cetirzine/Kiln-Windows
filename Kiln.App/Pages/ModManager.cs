@@ -169,7 +169,7 @@ public sealed class ModManager : UserControl
         var job = MainWindow.NewJob(T("更新 Mod", "Update mods"));
         try { foreach (var update in updates.ToArray()) { job.Token.ThrowIfCancellationRequested(); await ModIndex.Apply(update, job); } job.State = Job.JobState.Success; await Reload(true); }
         catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; }
-        catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); _status.Text = e.Friendly(); }
+        catch (Exception e) { job.Fail(e.Friendly()); _status.Text = e.Friendly(); }
         finally { _updating = false; }
     }
 }

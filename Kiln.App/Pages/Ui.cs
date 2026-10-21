@@ -217,19 +217,7 @@ internal static class Ui
         Grid.SetColumn(buttons, 1); grid.Children.Add(buttons); return grid;
     }
 
-    public static Button AccountButton()
-    {
-        var button = Button("", (sender, _) => MainWindow.Current!.ShowAccounts((FrameworkElement)sender));
-        void Update()
-        {
-            var instance = InstanceScanner.Scan(LauncherSettings.Shared.MinecraftFolder).FirstOrDefault(i => i.Name == LauncherSettings.Shared.SelectedInstance);
-            var account = instance == null ? AccountStore.Shared.Selected : AccountStore.Shared.AccountFor(instance.Setup);
-            button.Content = account == null ? Localization.T("添加账号", "Add account") : account.Name + "  ▾";
-        }
-        button.Loaded += (_, _) => { Update(); MainWindow.Current!.AccountsUpdated += Update; };
-        button.Unloaded += (_, _) => MainWindow.Current!.AccountsUpdated -= Update;
-        Update(); return button;
-    }
+    public static AccountChip AccountButton(bool onImage = false) => new(onImage);
 
     public static Grid Header(string title, params Button[] actions)
     {
@@ -237,7 +225,9 @@ internal static class Ui
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var text = Text(title, 21, FontWeights.Bold); text.MaxLines = 1; text.TextTrimming = TextTrimming.CharacterEllipsis; root.Children.Add(text);
-        var controls = Row(actions.Cast<UIElement>().Append(AccountButton()).ToArray()); controls.Spacing = 8; Grid.SetColumn(controls, 1); root.Children.Add(controls); return root;
+        var controls = new StackPanel { Name = "PageHeaderActions", Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+        foreach (var action in actions) controls.Children.Add(action);
+        controls.Children.Add(AccountButton()); Grid.SetColumn(controls, 1); root.Children.Add(controls); return root;
     }
 
     public static FrameworkElement Segmented(ComboBox selection, double? segmentWidth = 88)

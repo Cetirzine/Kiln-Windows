@@ -21,7 +21,7 @@ internal static class ShortcutUiChecks
         check("Desktop shortcuts reserve unique names without overwriting files", first != second && File.ReadAllText(existing) == "Existing shortcut must be preserved");
         var link = ShellShortcuts.Read(first);
         check("Native shell link targets Kiln and preserves the complete launch URI", string.Equals(link.Target, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) && link.Arguments == "\"" + LaunchLink.Create(instance.Name) + "\"");
-        check("Shortcut and launcher share the taskbar application identity", link.AppId == ShellShortcuts.AppId);
+        check("Shortcut carries the production launcher taskbar identity", link.AppId == ShellShortcuts.AppId);
         check("Desktop link uses a persistent instance icon", link.Icon.StartsWith(icons + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) && File.Exists(link.Icon) && ShellShortcuts.Read(second).Icon == link.Icon);
         foreach (var size in new[] { 16, 32, 48, 256 })
         {

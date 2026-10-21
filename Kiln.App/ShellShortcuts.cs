@@ -11,22 +11,28 @@ internal static class ShellShortcuts
     private static readonly PropertyKey AppIdKey = new(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
     private static IShellLinkW NewLink() => (IShellLinkW)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("00021401-0000-0000-C000-000000000046"))!)!;
 
-    internal static void Write(string path, string target, string arguments, string icon, string description)
+    internal static void Write(string path, string target, string arguments, string icon, string description, string appId = AppId, Guid? toastActivator = null)
     {
         var link = NewLink();
         try
         {
             link.SetPath(target); link.SetArguments(arguments); link.SetWorkingDirectory(Path.GetDirectoryName(target)!);
             link.SetDescription(description); link.SetIconLocation(icon, 0); link.SetShowCmd(1);
-            var key = AppIdKey; var value = new PropVariant { Type = 31, Pointer = Marshal.StringToCoTaskMemUni(AppId) };
+            var key = AppIdKey; var value = new PropVariant { Type = 31, Pointer = Marshal.StringToCoTaskMemUni(appId) };
             try { var properties = (IPropertyStore)link; properties.SetValue(ref key, ref value); properties.Commit(); }
             finally { PropVariantClear(ref value); }
+            if (toastActivator is { } clsid)
+            {
+                key = new PropertyKey(AppIdKey.Format, 26); value = new PropVariant { Type = 72, Pointer = Marshal.AllocCoTaskMem(16) }; Marshal.StructureToPtr(clsid, value.Pointer, false);
+                try { var properties = (IPropertyStore)link; properties.SetValue(ref key, ref value); properties.Commit(); }
+                finally { PropVariantClear(ref value); }
+            }
             ((IPersistFile)link).Save(path, false);
         }
         finally { Marshal.FinalReleaseComObject(link); }
     }
 
-    internal static (string Target, string Arguments, string Icon, string AppId) Read(string path)
+    internal static (string Target, string Arguments, string Icon, string AppId, Guid? ToastActivator) Read(string path)
     {
         var link = NewLink();
         try
@@ -35,7 +41,11 @@ internal static class ShellShortcuts
             var target = new StringBuilder(32768); var arguments = new StringBuilder(32768); var icon = new StringBuilder(32768);
             link.GetPath(target, target.Capacity, IntPtr.Zero, 4); link.GetArguments(arguments, arguments.Capacity); link.GetIconLocation(icon, icon.Capacity, out _);
             var key = AppIdKey; ((IPropertyStore)link).GetValue(ref key, out var value);
-            try { return (target.ToString(), arguments.ToString(), icon.ToString(), value.Type == 31 ? Marshal.PtrToStringUni(value.Pointer) ?? "" : ""); }
+            string appId;
+            try { appId = value.Type == 31 ? Marshal.PtrToStringUni(value.Pointer) ?? "" : ""; }
+            finally { PropVariantClear(ref value); }
+            key = new PropertyKey(AppIdKey.Format, 26); ((IPropertyStore)link).GetValue(ref key, out value);
+            try { return (target.ToString(), arguments.ToString(), icon.ToString(), appId, value.Type == 72 ? Marshal.PtrToStructure<Guid>(value.Pointer) : null); }
             finally { PropVariantClear(ref value); }
         }
         finally { Marshal.FinalReleaseComObject(link); }

@@ -12,6 +12,8 @@ public sealed class Job
 
     public Guid Id { get; } = Guid.NewGuid();
     public string Title { get; }
+    public bool Silent { get; }
+    public event Action<Job, JobState>? StateChanged;
     private string _stage = "";
     private int _stageIndex;
     private int _stageCount = 1;
@@ -22,7 +24,7 @@ public sealed class Job
     private string? _error;
     private CancellationTokenSource? _cts = new();
 
-    public Job(string title) => Title = title;
+    public Job(string title, bool silent = false) { Title = title; Silent = silent; }
 
     public string Stage { get { lock (_gate) return _stage; } set { lock (_gate) _stage = value; } }
     public int StageIndex { get { lock (_gate) return _stageIndex; } private set { lock (_gate) _stageIndex = value; } }
@@ -30,7 +32,15 @@ public sealed class Job
     public double FileFraction { get { lock (_gate) return _fileFraction; } set { lock (_gate) _fileFraction = value; } }
     public string FileText { get { lock (_gate) return _fileText; } set { lock (_gate) _fileText = value; } }
     public double Speed { get { lock (_gate) return _speed; } set { lock (_gate) _speed = value; } }
-    public JobState State { get { lock (_gate) return _state; } set { lock (_gate) _state = value; } }
+    public JobState State
+    {
+        get { lock (_gate) return _state; }
+        set
+        {
+            lock (_gate) { if (_state == value) return; _state = value; }
+            StateChanged?.Invoke(this, value);
+        }
+    }
     public string? Error { get { lock (_gate) return _error; } set { lock (_gate) _error = value; } }
 
     /// 取消令牌；任务通过它协作取消（对应原版 Job.task?.cancel()）
@@ -67,8 +77,11 @@ public sealed class Job
 
     public void Cancel()
     {
-        lock (_gate) _cts?.Cancel();
+        CancellationTokenSource? cancellation; lock (_gate) cancellation = _cts;
+        cancellation?.Cancel();
     }
+
+    public void Fail(string error) { Error = error; State = JobState.Failed; }
 
     public static string FormatSpeed(double bytesPerSecond) => FormatSize(bytesPerSecond) + "/s";
 

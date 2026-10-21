@@ -35,7 +35,7 @@ public static class ImportPage
                 var job = MainWindow.NewJob(T($"导入 {item.Name}", $"Import {item.Name}"));
                 try { await Task.Run(() => LauncherImport.Run(item.Candidate, item.Name, folder, job)); job.State = Job.JobState.Success; }
                 catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; }
-                catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); }
+                catch (Exception e) { job.Fail(e.Friendly()); }
             }));
         }
         catch (Exception e) { await Ui.ShowError(root, e); }
@@ -67,7 +67,7 @@ public static class ImportPage
             return InstallResult.Installed;
         }
         catch (OperationCanceledException) { if (job != null) job.State = Job.JobState.Cancelled; return InstallResult.Cancelled; }
-        catch (Exception e) { if (job != null) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); } await Ui.ShowError(root, e); return InstallResult.Failed; }
+        catch (Exception e) { job?.Fail(e.Friendly()); await Ui.ShowError(root, e); return InstallResult.Failed; }
     }
     private static async Task ManualDownloads(XamlRoot root, IReadOnlyList<Modpack.ManualFile> files)
     {

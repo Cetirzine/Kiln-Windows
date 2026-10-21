@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml;
 namespace Kiln.App;
 
 /// 系统集成（对应原版 SystemIntegration）：
-/// - 后台提醒：目前闪烁任务栏，系统通知接入状态见 PORT-PARITY.md
+/// - 后台原生通知、点击回到任务或日志；前台轻提示
 /// - kiln:// 完整启动参数、已有窗口转交、原生桌面快捷方式
 /// - 启动时自动检查更新
 internal static class SystemIntegration
@@ -13,7 +13,7 @@ internal static class SystemIntegration
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
 
-    public static void InitializeAppIdentity() => SetCurrentProcessExplicitAppUserModelID(ShellShortcuts.AppId);
+    public static void InitializeAppIdentity(string? appId = null) => SetCurrentProcessExplicitAppUserModelID(appId ?? ShellShortcuts.AppId);
 
     public static string ActivationChannelName
     {
@@ -105,15 +105,31 @@ internal static class SystemIntegration
     }
 
     private const uint FLASHW_ALL = 3;
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint process);
+    internal static bool IsForeground
+    {
+        get { GetWindowThreadProcessId(GetForegroundWindow(), out var process); return process == Environment.ProcessId; }
+    }
+    private static DesktopNotifications? _notifications;
 
-    /// 后台提醒（对应原版的系统通知）：任务栏闪烁引起注意
-    public static void Notify(string title, string message)
+    /// 前台已有轻提示；后台任务完成/崩溃使用系统通知，遵循用户与系统设置。
+    public static void Notify(string title, string message, string? action = null, bool force = false)
     {
         try
         {
-            if (!LauncherSettings.Shared.SystemNotifications) return;
+            if (!LauncherSettings.Shared.SystemNotifications || MainWindow.Current?.IsDiagnostics == true) return;
             var window = App.MainAppWindow;
             if (window == null) return;
+            if (!window.DispatcherQueue.HasThreadAccess) { window.DispatcherQueue.TryEnqueue(() => Notify(title, message, action, force)); return; }
+            if (!force && IsForeground) return;
+            try
+            {
+                _notifications ??= new DesktopNotifications(ShellShortcuts.AppId, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Kiln", "Kiln.lnk"));
+                _notifications.Show(title, message, "kiln://" + (action is "tasks" or "log" ? action : "show"));
+                return;
+            }
+            catch (Exception e) { Log.log("[Notify] " + e.Friendly()); }
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             var info = new FLASHWINFO
             {
@@ -156,44 +172,5 @@ internal static class SystemIntegration
     }
 
     /// 启动时自动检查更新（对应原版 autoCheckUpdates）
-    public static async Task AutoUpdateCheck(MainWindow window)
-    {
-        try
-        {
-            if (!LauncherSettings.Shared.AutoCheckUpdates) return;
-            // 原版自动检查间隔为 6 小时；失败的检查不延后下次重试。
-            if (LauncherSettings.Shared.LastUpdateCheck is { } last
-                && (DateTime.UtcNow - last).TotalHours < 6) return;
-            var release = await Updater.Check();
-            LauncherSettings.Shared.LastUpdateCheck = DateTime.UtcNow;
-            if (release == null) return;
-            var dialog = new KilnDialog
-            {
-                XamlRoot = window.Content.XamlRoot,
-                Title = Localization.T($"新版本 {release.Version}", $"Update {release.Version}"),
-                Content = release.Notes,
-                PrimaryButtonText = Localization.T("更新", "Update"),
-                SecondaryButtonText = Localization.T("查看", "View"),
-                CloseButtonText = Localization.T("以后再说", "Later"),
-            };
-            var result = await dialog.ShowAsync();
-            if (result == Microsoft.UI.Xaml.Controls.ContentDialogResult.Secondary)
-            {
-                _ = Windows.System.Launcher.LaunchUriAsync(new Uri(release.PageUrl));
-                return;
-            }
-            if (result != Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary) return;
-            var appDir = Updater.CurrentApp;
-            if (appDir == null) return;
-            Updater.CheckReplaceable(appDir);
-            var job = MainWindow.NewJob(Localization.T($"更新到 {release.Version}", $"Update to {release.Version}"));
-            var staged = await Updater.Prepare(release, appDir, job);
-            Updater.LaunchReplacement(staged, appDir);
-            Application.Current.Exit();
-        }
-        catch (Exception e)
-        {
-            Log.log($"[Update] 自动检查失败：{e.Friendly()}");
-        }
-    }
+    public static Task AutoUpdateCheck(MainWindow window) => AppUpdates.Check(window, userInitiated: false);
 }

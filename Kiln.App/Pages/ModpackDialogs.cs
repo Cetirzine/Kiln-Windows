@@ -100,7 +100,7 @@ internal static class ModpackDialogs
                 var suggested = string.Concat((form.PackName + "-" + form.Version).Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
                 var paths = await KilnFileBrowser.Pick(false, true, false, new[] { ".mrpack" }, suggested); if (paths.FirstOrDefault() is not { } output) continue;
                 var name = form.PackName; var version = form.Version; var summary = form.Summary; var include = form.Selected.ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var job = MainWindow.NewJob(T($"导出整合包 {name}", $"Export modpack {name}"));
+                var job = MainWindow.NewJob(T($"导出整合包 {name}", $"Export modpack {name}"), silent: true);
                 try
                 {
                     var result = await Task.Run(() => Modpack.Export(instance, name, version, summary, include, output, job));
@@ -108,7 +108,7 @@ internal static class ModpackDialogs
                     await App.ShowInfo(App.MainAppWindow!, T($"已导出：{result.Linked} 个文件引用 Modrinth，{result.Embedded} 个文件已打包。", $"Exported: {result.Linked} files linked from Modrinth, {result.Embedded} packed."));
                 }
                 catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; }
-                catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); await Ui.ShowError(root, e); }
+                catch (Exception e) { job.Fail(e.Friendly()); await Ui.ShowError(root, e); }
                 return;
             }
         }

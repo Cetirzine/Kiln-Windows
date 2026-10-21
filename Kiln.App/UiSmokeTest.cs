@@ -103,8 +103,12 @@ internal static class UiSmokeTest
             await ActivationUiChecks.Run(window, instance, fixtureRoot, (name, passed) => Check(name, passed));
             await ShortcutUiChecks.Run(instance, fixtureRoot, (name, passed) => Check(name, passed));
             await HintUiChecks.Run(window, (name, passed) => Check(name, passed));
+            await SystemUiChecks.Run(window, fixtureRoot, (name, passed) => Check(name, passed));
+            await AccountUiChecks.Run(window, fixtureRoot, (name, passed) => Check(name, passed));
+            Check("No unhandled UI exceptions during native regression", App.DiagnosticErrors.Count == 0, App.DiagnosticErrors);
             Ui.SelectTab("instance", 0); await Show(new InstanceDetailPage(instance));
             window.Closed += (_, _) => { if (Path.GetFullPath(fixtureRoot).StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) && Directory.Exists(fixtureRoot)) { try { Directory.Delete(fixtureRoot, true); } catch { } } };
+            if (Environment.GetCommandLineArgs().Contains("--show-account-scene")) window.ShowDiagnostics(AccountUiChecks.Preview(fixtureRoot));
             window.Title = "Kiln · UI 检查";
         }
         catch (Exception e)

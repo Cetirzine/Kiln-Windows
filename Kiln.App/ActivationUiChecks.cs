@@ -20,16 +20,16 @@ internal static class ActivationUiChecks
         check("Ready window receives the complete launch request", launches.Single() == LaunchLink.Parse(link));
         dispatcher.Receive(link); dispatcher.Receive("kiln://play/Another");
         check("Another activation cannot start a second concurrent launch", launches.Count == 1);
-        dispatcher.Receive("kiln://tasks"); await Task.Delay(60);
-        check("Task activation works while a launch is pending", Descendants(window.Content).OfType<Pages.JobsPage>().Any());
+        dispatcher.Receive("kiln://tasks");
+        check("Task activation works while a launch is pending", await WaitForPage<Pages.JobsPage>(window));
         gate.SetResult(); await Task.Delay(30);
 
         var fakeGame = new GameProcess(instance.Name) { Instance = instance, State = GameProcess.GameState.Crashed };
         fakeGame.Append("Synthetic crash log fixture\n"); MainWindow.Games.Insert(0, fakeGame);
         try
         {
-            dispatcher.Receive("kiln://log"); await Task.Delay(60);
-            check("Crash activation opens the crashed game's log", Descendants(window.Content).OfType<Pages.GameLogPage>().Any());
+            dispatcher.Receive("kiln://log");
+            check("Crash activation opens the crashed game's log", await WaitForPage<Pages.GameLogPage>(window));
         }
         finally { MainWindow.Games.Remove(fakeGame); }
 
@@ -62,7 +62,7 @@ internal static class ActivationUiChecks
             if (!child.HasExited) throw new TimeoutException("Secondary activation process did not exit.");
             var received = await receipt.Task.WaitAsync(TimeSpan.FromSeconds(3));
             check("Second Kiln process forwards and exits without opening a window", child.ExitCode == 0 && !sawWindow && received == "kiln://tasks");
-            check("Cross-process activation reaches the actual task page", Descendants(window.Content).OfType<Pages.JobsPage>().Any());
+            check("Cross-process activation reaches the actual task page", await WaitForPage<Pages.JobsPage>(window));
         }
         finally { if (!child.HasExited) child.Kill(entireProcessTree: true); }
         receipt = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -76,6 +76,20 @@ internal static class ActivationUiChecks
             try { await shortcutProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
             finally { if (!shortcutProcess.HasExited) shortcutProcess.Kill(entireProcessTree: true); }
         }
+    }
+
+    private static async Task<bool> WaitForPage<T>(MainWindow window) where T : Page
+    {
+        // Navigation commits before WinUI attaches its page to the visual tree. Wait for
+        // the actual loaded page rather than assuming a frame finishes within 60ms.
+        var elapsed = Stopwatch.StartNew();
+        do
+        {
+            ((FrameworkElement)window.Content).UpdateLayout();
+            if (Descendants(window.Content).OfType<T>().Any(page => page.IsLoaded)) return true;
+            await Task.Delay(30);
+        } while (elapsed.Elapsed < TimeSpan.FromSeconds(3));
+        return false;
     }
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)

@@ -100,7 +100,7 @@ public static class Player
 
     /// 画玩家：脚底在 feet 行，x 为面朝左时头部正面的左边缘；facingRight 时整个人左右翻转
     public static void Draw(DotBuffer b, PlayerLook look, PlayerProps? props, PlayerPose pose,
-        int x, int feet, double t, bool facingRight = false)
+        int x, int feet, double t, bool facingRight = false, int? seatedFloor = null)
     {
         props ??= new PlayerProps();
         look = look.Wearing(props.Armor);
@@ -289,13 +289,18 @@ public static class Player
         }
         // 贴到场景里；朝右时以身体中线翻转
         var cx = ax + 5;
+        // A low cushion is a seat surface, not a foot anchor. Keep the underside
+        // of the thighs against it through the breathing cycle and the feet above soil.
+        var anchor = pose.Sitting && seatedFloor != null ? bodyBottom + 5 : 60;
         for (var sy = 0; sy < s.Rows; sy++)
             for (var sx = 0; sx < s.Cols; sx++)
             {
                 var v = s.Px[sy * s.Cols + sx];
                 if (v == 0) continue;
                 var tx = facingRight ? 2 * cx - sx : sx;
-                b[x + pose.Dx + tx - ax, feet - 60 + sy] = v;
+                var targetY = feet - anchor + sy;
+                if (pose.Sitting && seatedFloor is { } floor && targetY >= floor) continue;
+                b[x + pose.Dx + tx - ax, targetY] = v;
             }
     }
 }

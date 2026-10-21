@@ -16,7 +16,7 @@ internal static class LaunchCoordinator
         var window = MainWindow.Current!;
         var job = MainWindow.NewJob(options.ExportScript == null
             ? Localization.T($"启动 {instance.Name}", $"Play {instance.Name}")
-            : Localization.T($"导出 {instance.Name} 启动脚本", $"Export launch script for {instance.Name}"));
+            : Localization.T($"导出 {instance.Name} 启动脚本", $"Export launch script for {instance.Name}"), silent: true);
         MainWindow.LaunchJob = job;
         try
         {
@@ -27,7 +27,7 @@ internal static class LaunchCoordinator
                 {
                     RestoreVisibility();
                     if (process.State != GameProcess.GameState.Crashed) return;
-                    SystemIntegration.Notify("Kiln", Localization.T($"{instance.Name} 崩溃了", $"{instance.Name} crashed"));
+                    SystemIntegration.Notify("Kiln", Localization.T($"{instance.Name} 崩溃了", $"{instance.Name} crashed"), "log");
                     var finding = CrashAnalyzer.Analyze(process.Lines, instance.GameDir);
                     await Ui.ShowError(window.Content.XamlRoot,
                         (finding?.Reason ?? Localization.T("游戏崩溃了。", "The game crashed.")) + (finding?.Detail is { Length: > 0 } detail ? "\n" + detail : ""));
@@ -37,7 +37,7 @@ internal static class LaunchCoordinator
             job.State = Job.JobState.Success;
         }
         catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; throw; }
-        catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); throw; }
+        catch (Exception e) { job.Fail(e.Friendly()); throw; }
         finally { MainWindow.LaunchJob = null; }
     }
 

@@ -22,7 +22,7 @@ public sealed class HomePage : Page
     private readonly TextBlock _playStatus = Ui.Text("", 11);
     private readonly Border _playFill = new() { Background = Solid(0x3D8B2F), HorizontalAlignment = HorizontalAlignment.Left };
     private readonly Button _playButton = new() { Width = 230, Height = 52, Padding = new Thickness(0) };
-    private readonly Button _accountButton = Ui.AccountButton();
+    private readonly AccountChip _accountButton = Ui.AccountButton(onImage: true);
     private readonly Grid _notes = new() { ColumnSpacing = 20 };
     private readonly TextBlock _notesStatus = Ui.Text("", 12);
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
@@ -182,7 +182,7 @@ public sealed class HomePage : Page
             ToolTipService.SetToolTip(slot, instance?.Name ?? ""); _hotbar.Children.Add(slot);
         }
         var account = inst == null ? AccountStore.Shared.Selected : AccountStore.Shared.AccountFor(inst.Setup);
-        _accountButton.Content = account == null ? Localization.T("添加账号", "Add account") : $"{account.Name}  ▾";
+        _accountButton.Refresh(inst);
         _ = LoadCast(account);
         UpdateProgress();
     }

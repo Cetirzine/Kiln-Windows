@@ -131,38 +131,6 @@ public sealed class AboutPage : Page
         var scroll = Ui.Scroll(panels); Grid.SetRow(scroll, 1); root.Children.Add(scroll); Content = root;
     }
 
-    private async Task CheckUpdate()
-    {
-        try
-        {
-            var release = await Updater.Check();
-            if (release == null)
-            {
-                await App.ShowInfo(App.MainAppWindow!, Localization.T("已是最新版本。", "Up to date."));
-                return;
-            }
-            LauncherSettings.Shared.LastUpdateCheck = DateTime.UtcNow;
-            var dialog = new KilnDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = Localization.T($"新版本 {release.Version}", $"Update {release.Version}"),
-                Content = release.Notes,
-                PrimaryButtonText = Localization.T("更新", "Update"),
-                CloseButtonText = Localization.T("以后再说", "Later"),
-            };
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-            var appDir = Updater.CurrentApp ?? throw new LauncherException(
-                Localization.T("无法定位程序目录。", "Couldn't locate the app directory."));
-            Updater.CheckReplaceable(appDir);
-            var job = MainWindow.NewJob(Localization.T($"更新到 {release.Version}", $"Update to {release.Version}"));
-            var staged = await Updater.Prepare(release, appDir, job);
-            Updater.LaunchReplacement(staged, appDir);
-            Application.Current.Exit();
-        }
-        catch (Exception e)
-        {
-            await Ui.ShowError(XamlRoot, e);
-        }
-    }
+    private Task CheckUpdate() => AppUpdates.Check(MainWindow.Current!, userInitiated: true);
 }
 

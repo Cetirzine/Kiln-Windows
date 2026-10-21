@@ -224,7 +224,7 @@ public sealed class ResourceSearchPage : UserControl
                 job.State = Job.JobState.Success; _status.Text = T("安装完成", "Installed");
             }
             catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; }
-            catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); throw; }
+            catch (Exception e) { job.Fail(e.Friendly()); throw; }
         }
         catch (Exception e) { _status.Text = e.Friendly(); if (_alive) await Ui.ShowError(XamlRoot, e); }
         finally { _working = false; }

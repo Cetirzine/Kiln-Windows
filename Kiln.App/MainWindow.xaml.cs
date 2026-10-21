@@ -24,6 +24,10 @@ public sealed partial class MainWindow : Window
     private double? _captionBackdropLuminance;
     private bool _whiteCaption;
     private bool _diagnosticsRunning;
+    internal bool IsDiagnostics { get; }
+    private readonly TaskbarProgress? _taskbar;
+    internal TaskbarProgress? Taskbar => _taskbar;
+    internal event Action<Job, JobFeedback?>? JobCompleted;
     private readonly HintOverlay _hints = new();
     internal void ShowHint(string text, HintKind kind)
     {
@@ -46,8 +50,9 @@ public sealed partial class MainWindow : Window
     {
         if (!_navigation.TryGetValue("jobs", out var button)) return;
         var running = AllJobs.Where(j => j.State == Job.JobState.Running).ToList();
+        var progress = JobProgress.From(running); _taskbar?.Update(progress);
         if (running.Count == 0) { button.Content = _jobsIdleContent; Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, Localization.T("任务", "Tasks")); return; }
-        _jobsProgressFill!.Width = 34 * Math.Clamp(running[0].Fraction, 0, 1);
+        _jobsProgressFill!.Width = 34 * progress.Fraction;
         _jobsProgressLabel!.Text = Localization.T($"{running.Count} 个任务", $"{running.Count} task{(running.Count == 1 ? "" : "s")}");
         button.Content = _jobsProgressContent;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, _jobsProgressLabel.Text);
@@ -143,6 +148,9 @@ public sealed partial class MainWindow : Window
         Current = this;
         _ = LauncherSettings.Shared; // Load the saved language before constructing any labels.
         InitializeComponent();
+        IsDiagnostics = diagnostics;
+        try { _taskbar = new TaskbarProgress(WinRT.Interop.WindowNative.GetWindowHandle(this)); }
+        catch (Exception e) { Log.log("[Taskbar] " + e.Friendly()); }
         if (diagnostics) SetDiagnosticsRunning(true);
         Shell.PreviewKeyDown += (_, args) => { if (_diagnosticsRunning) args.Handled = true; };
         ContentRegion.Children.Insert(0, new DotGridControl());
@@ -165,7 +173,7 @@ public sealed partial class MainWindow : Window
         BuildNavigation();
         _jobsTimer.Tick += (_, _) => RefreshJobIndicator();
         Shell.Loaded += (_, _) => _jobsTimer.Start();
-        Closed += (_, _) => _jobsTimer.Stop();
+        Closed += (_, _) => { _jobsTimer.Stop(); _taskbar?.Dispose(); };
         for (var i = 0; i < 9; i++)
         {
             var index = i;
@@ -212,12 +220,28 @@ public sealed partial class MainWindow : Window
         (footer ? FooterItems : NavigationItems).Children.Add(button);
     }
 
-    public static Job NewJob(string title)
+    public static Job NewJob(string title, bool silent = false)
     {
-        var job = new Job(title);
+        var job = new Job(title, silent); job.StateChanged += JobStateChanged;
         lock (JobsGate) Jobs.Add(job);
         Current?.DispatcherQueue.TryEnqueue(() => Current?.RefreshJobIndicator());
         return job;
+    }
+
+    private static void JobStateChanged(Job job, Job.JobState state)
+    {
+        if (state == Job.JobState.Running) return;
+        job.StateChanged -= JobStateChanged;
+        Current?.DispatcherQueue.TryEnqueue(() => Current?.CompleteJob(job));
+    }
+
+    private void CompleteJob(Job job)
+    {
+        job.Stage = job.State switch { Job.JobState.Success => Localization.T("完成", "Done"), Job.JobState.Cancelled => Localization.T("已取消", "Cancelled"), _ => Localization.T("失败", "Failed") };
+        RefreshJobIndicator();
+        var feedback = JobFeedback.From(job); JobCompleted?.Invoke(job, feedback);
+        if (IsDiagnostics || feedback == null) return;
+        Hint.Show(feedback.Hint, feedback.Kind); SystemIntegration.Notify(feedback.Title, feedback.Body, "tasks");
     }
 
     public static IReadOnlyList<Job> AllJobs

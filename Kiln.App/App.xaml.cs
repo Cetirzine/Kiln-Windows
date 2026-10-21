@@ -9,12 +9,16 @@ public partial class App : Application
     public static Window? MainAppWindow { get; private set; }
     private InstanceChannel? _activationChannel;
     private ActivationDispatcher? _activationDispatcher;
+    private bool _diagnosticsMode;
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<string> DiagnosticFailures = new();
+    internal static IReadOnlyCollection<string> DiagnosticErrors => DiagnosticFailures.ToArray();
 
     public App()
     {
         InitializeComponent();
         UnhandledException += (_, e) =>
         {
+            if (_diagnosticsMode) DiagnosticFailures.Enqueue(e.Exception.Friendly());
             Log.log($"[UI] 未处理异常：{e.Exception.Friendly()}");
             e.Handled = true;
         };
@@ -34,15 +38,23 @@ public partial class App : Application
             catch { Environment.ExitCode = 1; }
             Exit(); return;
         }
-        SystemIntegration.InitializeAppIdentity();
-        if (arguments.Length >= 3 && arguments[1] == "--ui-smoke-test")
+        if (arguments.Length >= 3 && arguments[1] is "--ui-smoke-test" or "--system-smoke-test")
         {
+            _diagnosticsMode = true;
+            var diagnosticId = "Cetirzine.Kiln.UI." + Environment.ProcessId + "." + Guid.NewGuid().ToString("N")[..8];
+            SystemIntegration.InitializeAppIdentity(diagnosticId);
             var diagnosticWindow = new MainWindow(diagnostics: true);
             MainAppWindow = diagnosticWindow;
             diagnosticWindow.Activate();
-            diagnosticWindow.DispatcherQueue.TryEnqueue(async () => { await UiSmokeTest.Run(diagnosticWindow, arguments[2]); if (arguments.Contains("--exit-after-test")) diagnosticWindow.Close(); });
+            diagnosticWindow.DispatcherQueue.TryEnqueue(async () =>
+            {
+                if (arguments[1] == "--ui-smoke-test") await UiSmokeTest.Run(diagnosticWindow, arguments[2]);
+                else await NativeSystemSmoke.Run(diagnosticWindow, arguments[2], diagnosticId, arguments.Contains("--wait-for-click"));
+                if (arguments.Contains("--exit-after-test")) diagnosticWindow.Close();
+            });
             return;
         }
+        SystemIntegration.InitializeAppIdentity();
         var message = arguments.Skip(1).FirstOrDefault(a => LaunchLink.Parse(a) != null) ?? "";
         InstanceChannel? channel;
         try

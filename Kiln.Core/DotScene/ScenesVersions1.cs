@@ -1016,6 +1016,6 @@ public sealed class WildernessBound : IDotScene
         var props = new PlayerProps { Held = HeldItem.ExplorerMap };
         var pose = Player.Idle(t, props, 0);
         pose.Sitting = true;
-        Player.Draw(b, cast.Player, props, pose, (int)(b.Cols * 0.62), g - 4, t);
+        Player.Draw(b, cast.Player, props, pose, (int)(b.Cols * 0.62), g - 4, t, seatedFloor: g);
     }
 }

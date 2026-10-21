@@ -71,7 +71,7 @@ public sealed class InstanceDetailPage : Page
                     await App.ShowInfo(App.MainAppWindow!, Localization.T("文件已补全。", "Files repaired."));
                 }
                 catch (OperationCanceledException) { job.State = Job.JobState.Cancelled; }
-                catch (Exception e) { job.State = Job.JobState.Failed; job.Error = e.Friendly(); await Ui.ShowError(XamlRoot, e); }
+                catch (Exception e) { job.Fail(e.Friendly()); await Ui.ShowError(XamlRoot, e); }
             }),
             Ui.Button(Localization.T("导出整合包", "Export modpack"), async (_, _) => await ExportModpack(inst)),
             Ui.Button(Localization.T("导出启动脚本", "Export launch script"), async (_, _) => await ExportScript(inst)),
