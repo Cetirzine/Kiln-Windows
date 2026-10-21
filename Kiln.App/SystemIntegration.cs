@@ -5,21 +5,88 @@ using Microsoft.UI.Xaml;
 namespace Kiln.App;
 
 /// 系统集成（对应原版 SystemIntegration）：
-/// - 后台提醒：启动器在后台时，任务完成 / 游戏崩溃时闪烁任务栏并显示通知横幅（应用内信息条）
-/// - kiln:// 协议：kiln://launch/<版本名> 直接启动某个版本（桌面快捷方式 / 命令行）
+/// - 后台提醒：目前闪烁任务栏，系统通知接入状态见 PORT-PARITY.md
+/// - kiln:// 完整启动参数、已有窗口转交、原生桌面快捷方式
 /// - 启动时自动检查更新
 internal static class SystemIntegration
 {
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
 
-    public static void InitializeAppIdentity() => SetCurrentProcessExplicitAppUserModelID("Cetirzine.Kiln");
-    public static void CreateShortcut(McInstance instance)
+    public static void InitializeAppIdentity() => SetCurrentProcessExplicitAppUserModelID(ShellShortcuts.AppId);
+
+    public static string ActivationChannelName
     {
-        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        var name = string.Concat(instance.Name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
-        File.WriteAllText(Path.Combine(desktop, "Kiln - " + name + ".url"),
-            "[InternetShortcut]\r\nURL=kiln://launch/" + Uri.EscapeDataString(instance.Name) + "\r\n", System.Text.Encoding.UTF8);
+        get
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return $"Kiln.Activation.v1.{identity.User!.Value}.{System.Diagnostics.Process.GetCurrentProcess().SessionId}";
+        }
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hwnd);
+    public static void AllowActivation(int processId) => AllowSetForegroundWindow((uint)processId);
+    public static void BringToFront(MainWindow window)
+    {
+        window.AppWindow.Show();
+        if (window.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter { State: Microsoft.UI.Windowing.OverlappedPresenterState.Minimized } presenter) presenter.Restore();
+        window.Activate(); SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(window));
+    }
+
+    internal static async Task<InstanceChannel?> ConnectActivation(string name, string message)
+    {
+        var channel = new InstanceChannel(name);
+        try
+        {
+            if (channel.TryOwn()) return channel;
+            try { await InstanceChannel.Send(name, message, beforeSend: AllowActivation); }
+            catch { if (channel.TryOwn()) return channel; throw; }
+            channel.Dispose(); return null;
+        }
+        catch { channel.Dispose(); throw; }
+    }
+    public static async void CreateShortcut(McInstance instance)
+    {
+        try
+        {
+            await DotScene.BlockTextures.Shared.Ensure(new[] { instance.Icon });
+            var path = await CreateShortcutFile(instance, Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), Path.Combine(Paths.Support, "shell-icons"));
+            Hint.Show(Localization.T($"已在桌面创建 {instance.Name} 的快捷方式", $"Created a desktop shortcut for {instance.Name}"), HintKind.Success);
+            await Pages.InstanceCardUi.Reveal(path);
+        }
+        catch (Exception e) { Hint.Show(e.Friendly(), HintKind.Error); }
+    }
+
+    internal static void CopyLaunchLink(McInstance instance)
+    {
+        var data = new Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText(LaunchLink.Create(instance.Name));
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        Hint.Show(Localization.T("已复制启动链接", "Launch link copied"), HintKind.Success);
+    }
+
+    internal static async Task<string> CreateShortcutFile(McInstance instance, string desktop, string icons)
+    {
+        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("Launcher executable is unavailable.");
+        var icon = await ShortcutIcons.Create(instance.Icon, icons);
+        var name = string.Concat(instance.Name.Select(c => Path.GetInvalidFileNameChars().Contains(c) || char.IsControl(c) ? '_' : c)).Trim(' ', '.');
+        if (name.Length > 80) name = name[..(char.IsHighSurrogate(name[79]) ? 79 : 80)];
+        if (name.Length == 0) name = "Minecraft";
+        Directory.CreateDirectory(desktop);
+        for (var number = 1; number <= 10000; number++)
+        {
+            var path = Path.Combine(desktop, "Kiln - " + name + (number == 1 ? "" : $" ({number})") + ".lnk");
+            if (Directory.Exists(path)) continue;
+            try { using var reservation = new FileStream(path, FileMode.CreateNew, FileAccess.Write); }
+            catch (IOException) when (File.Exists(path) || Directory.Exists(path)) { continue; }
+            try { ShellShortcuts.Write(path, exe, "\"" + LaunchLink.Create(instance.Name) + "\"", icon, instance.Name); return path; }
+            catch { File.Delete(path); throw; }
+        }
+        throw new IOException("No free shortcut name is available.");
     }
     private static bool _flashUnavailable;
 
@@ -88,33 +155,17 @@ internal static class SystemIntegration
         }
     }
 
-    /// 处理 kiln://launch/<版本名> 激活参数
-    public static string? ParseLaunchUri(string[] args)
-    {
-        foreach (var arg in args)
-        {
-            if (!arg.StartsWith("kiln://", StringComparison.OrdinalIgnoreCase)) continue;
-            var rest = arg["kiln://".Length..];
-            if (rest.StartsWith("launch/", StringComparison.OrdinalIgnoreCase))
-            {
-                var name = Uri.UnescapeDataString(rest["launch/".Length..].TrimEnd('/'));
-                return name.Length > 0 ? name : null;
-            }
-        }
-        return null;
-    }
-
     /// 启动时自动检查更新（对应原版 autoCheckUpdates）
     public static async Task AutoUpdateCheck(MainWindow window)
     {
         try
         {
             if (!LauncherSettings.Shared.AutoCheckUpdates) return;
-            // 距上次检查不足 24 小时则跳过
+            // 原版自动检查间隔为 6 小时；失败的检查不延后下次重试。
             if (LauncherSettings.Shared.LastUpdateCheck is { } last
-                && (DateTime.UtcNow - last).TotalHours < 24) return;
-            LauncherSettings.Shared.LastUpdateCheck = DateTime.UtcNow;
+                && (DateTime.UtcNow - last).TotalHours < 6) return;
             var release = await Updater.Check();
+            LauncherSettings.Shared.LastUpdateCheck = DateTime.UtcNow;
             if (release == null) return;
             var dialog = new KilnDialog
             {

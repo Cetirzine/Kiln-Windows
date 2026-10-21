@@ -100,6 +100,9 @@ internal static class UiSmokeTest
             Check("Screenshots use an adaptive multi-column gallery", gallery.ColumnDefinitions.Count >= 2 && gallery.Children.Count == 3);
             await WorkflowUiChecks.Run(window, root, instance, fixtureRoot, (name, passed) => Check(name, passed));
             await InstanceLayoutUiChecks.Run(window, instance, (name, passed) => Check(name, passed));
+            await ActivationUiChecks.Run(window, instance, fixtureRoot, (name, passed) => Check(name, passed));
+            await ShortcutUiChecks.Run(instance, fixtureRoot, (name, passed) => Check(name, passed));
+            await HintUiChecks.Run(window, (name, passed) => Check(name, passed));
             Ui.SelectTab("instance", 0); await Show(new InstanceDetailPage(instance));
             window.Closed += (_, _) => { if (Path.GetFullPath(fixtureRoot).StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase) && Directory.Exists(fixtureRoot)) { try { Directory.Delete(fixtureRoot, true); } catch { } } };
             window.Title = "Kiln · UI 检查";

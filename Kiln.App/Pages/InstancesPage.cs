@@ -78,7 +78,7 @@ public sealed class InstancesPage : Page
         void Add(string title, Action action) { var item = new MenuFlyoutItem { Text = title }; item.Click += (_, _) => action(); menu.Items.Add(item); }
         Add(T("版本设置", "Instance settings"), () => MainWindow.Current!.ShowInstance(instance));
         Add(T("打开文件夹", "Open folder"), () => _ = Windows.System.Launcher.LaunchFolderPathAsync(instance.GameDir));
-        Add(T("复制启动链接", "Copy launch link"), () => { var data = new Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText("kiln://launch/" + Uri.EscapeDataString(instance.Name)); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data); });
+        Add(T("复制启动链接", "Copy launch link"), () => SystemIntegration.CopyLaunchLink(instance));
         Add(T("创建桌面快捷方式", "Create desktop shortcut"), () => SystemIntegration.CreateShortcut(instance));
         Add(T("删除…", "Delete…"), async () =>
         {

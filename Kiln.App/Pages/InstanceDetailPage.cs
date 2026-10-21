@@ -77,7 +77,7 @@ public sealed class InstanceDetailPage : Page
             Ui.Button(Localization.T("导出启动脚本", "Export launch script"), async (_, _) => await ExportScript(inst)),
             Ui.Button(T("导出诊断包…", "Export diagnostics…"), async (_, _) => await ExportDiagnostics(inst)),
             Ui.Button(T("创建桌面快捷方式", "Create desktop shortcut"), (_, _) => SystemIntegration.CreateShortcut(inst)),
-            Ui.Button(T("复制启动链接", "Copy launch link"), (_, _) => { var data = new Windows.ApplicationModel.DataTransfer.DataPackage(); data.SetText("kiln://launch/" + Uri.EscapeDataString(inst.Name)); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data); }) };
+            Ui.Button(T("复制启动链接", "Copy launch link"), (_, _) => SystemIntegration.CopyLaunchLink(inst)) };
             var delete = Ui.Button(T("删除", "Delete"), async (_, _) => await DeleteInstance(inst));
             delete.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 194, 61, 61));
             manageActions.Add(delete);
@@ -168,7 +168,7 @@ public sealed class InstanceDetailPage : Page
             var world = w;
             var playButton = Ui.Button(Localization.T("进入", "Play"), async (_, _) => await PlayWorld(inst, world.Name));
             playButton.IsEnabled = inst.SupportsQuickPlay;
-            UIElement worldIcon = BlockIconControl.For("grass_block", 32);
+            UIElement worldIcon = BlockIconControl.For("Grass", 32);
             var imagePath = Path.Combine(world.Url, "icon.png");
             if (File.Exists(imagePath)) worldIcon = new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(imagePath)), Width = 32, Height = 32 };
             var time = Ui.Text(T("上次游玩：", "Last played: ") + world.LastPlayed.ToLocalTime().ToString("yyyy-MM-dd HH:mm"), 11.5); time.Foreground = Ui.Brush("KilnTextSecondary");

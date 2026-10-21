@@ -9,6 +9,7 @@ internal static class ParityTests
         var passed = 0; var failed = 0;
         void Check(string name, bool condition) { Console.WriteLine($"{(condition ? "[OK]" : "[FAIL]")} {name}"); if (condition) passed++; else failed++; }
         void Throws(string name, Action action) { try { action(); Check(name, false); } catch { Check(name, true); } }
+        ActivationTests.Run(Check);
         Check("Offline UUID matches Minecraft server", Account.OfflineUuid("Notch") == "b50ad385829d3141a2167e7d7539ba7f");
         Check("Offline rename changes UUID", Account.OfflineUuid("Steve") != Account.OfflineUuid("Alex"));
         var cancelledJob = new Job("Cancellation test"); cancelledJob.Cancel();

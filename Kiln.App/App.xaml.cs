@@ -7,8 +7,8 @@ namespace Kiln.App;
 public partial class App : Application
 {
     public static Window? MainAppWindow { get; private set; }
-    /// kiln://launch/<版本名> 激活时要启动的版本
-    public static string? PendingLaunchVersion { get; private set; }
+    private InstanceChannel? _activationChannel;
+    private ActivationDispatcher? _activationDispatcher;
 
     public App()
     {
@@ -20,60 +20,60 @@ public partial class App : Application
         };
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        SystemIntegration.InitializeAppIdentity();
         var arguments = Environment.GetCommandLineArgs();
+        if (arguments.Length == 4 && arguments[1] == "--activation-test-client")
+        {
+            try
+            {
+                if (!arguments[2].StartsWith("Kiln.Activation.Test.", StringComparison.Ordinal)) throw new ArgumentException("Expected an isolated diagnostic channel.");
+                using var probe = await SystemIntegration.ConnectActivation(arguments[2], arguments[3]);
+                if (probe != null) Environment.ExitCode = 1;
+            }
+            catch { Environment.ExitCode = 1; }
+            Exit(); return;
+        }
+        SystemIntegration.InitializeAppIdentity();
         if (arguments.Length >= 3 && arguments[1] == "--ui-smoke-test")
         {
             var diagnosticWindow = new MainWindow(diagnostics: true);
             MainAppWindow = diagnosticWindow;
             diagnosticWindow.Activate();
-            diagnosticWindow.DispatcherQueue.TryEnqueue(async () => await UiSmokeTest.Run(diagnosticWindow, arguments[2]));
+            diagnosticWindow.DispatcherQueue.TryEnqueue(async () => { await UiSmokeTest.Run(diagnosticWindow, arguments[2]); if (arguments.Contains("--exit-after-test")) diagnosticWindow.Close(); });
             return;
         }
-        var window = new MainWindow();
-        MainAppWindow = window;
-        window.Activate();
-        // kiln:// 深链接：kiln://launch/<版本名> 直接启动
-        var launchVersion = SystemIntegration.ParseLaunchUri(Environment.GetCommandLineArgs().Skip(1).ToArray());
-        if (launchVersion != null)
+        var message = arguments.Skip(1).FirstOrDefault(a => LaunchLink.Parse(a) != null) ?? "";
+        InstanceChannel? channel;
+        try
         {
-            PendingLaunchVersion = launchVersion;
-            Log.log($"[Launch] 通过 kiln:// 链接启动：{launchVersion}");
+            channel = await SystemIntegration.ConnectActivation(SystemIntegration.ActivationChannelName, message);
         }
+        catch (Exception e)
+        {
+            Log.log("[Activation] " + e.Friendly());
+            var errorWindow = new MainWindow(diagnostics: true); MainAppWindow = errorWindow;
+            errorWindow.SetDiagnosticsRunning(false); errorWindow.Activate();
+            errorWindow.DispatcherQueue.TryEnqueue(async () => { await ShowInfo(errorWindow, Localization.T("Kiln 已在运行，但未能将请求交给已有窗口。请切换到 Kiln 后重试。", "Kiln is already running, but the request could not be delivered. Switch to Kiln and retry.")); Exit(); });
+            return;
+        }
+        if (channel == null) { Exit(); return; }
+        _activationChannel = channel;
+        var window = new MainWindow(); MainAppWindow = window;
+        _activationDispatcher = new ActivationDispatcher(window);
+        channel.Listen(received => { if (!window.DispatcherQueue.TryEnqueue(() => _activationDispatcher?.Receive(received))) throw new InvalidOperationException("The launcher window has closed."); });
+        window.Closed += (_, _) => { _activationDispatcher.Dispose(); channel.Dispose(); };
+        window.Activate(); _activationDispatcher.Receive(message);
         // 注册 kiln:// 协议 + 自动检查更新
         SystemIntegration.RegisterProtocol();
         _ = window.DispatcherQueue.TryEnqueue(async () =>
         {
             await Pcl2TakeOverDialog(window);
+            _activationDispatcher.Ready();
             await SystemIntegration.AutoUpdateCheck(window);
-            await HandlePendingLaunch();
         });
         // 后台刷新 Mod 中文名表
         _ = Task.Run(async () => await ModNames.Shared.Refresh());
-    }
-
-    /// 处理 kiln:// 启动请求
-    public static async Task HandlePendingLaunch()
-    {
-        var version = PendingLaunchVersion;
-        if (version == null) return;
-        PendingLaunchVersion = null;
-        try
-        {
-            var instances = InstanceScanner.Scan(LauncherSettings.Shared.MinecraftFolder);
-            var inst = instances.FirstOrDefault(i => string.Equals(i.Name, version, StringComparison.OrdinalIgnoreCase));
-            if (inst == null) throw new LauncherException(Localization.T($"找不到版本 {version}", $"Instance {version} wasn't found"));
-            LauncherSettings.Shared.SelectedInstance = inst.Name;
-            MainAppWindow!.DispatcherQueue.TryEnqueue(() => ((MainWindow)MainAppWindow).ReloadCurrentPage());
-            await LaunchCoordinator.Launch(inst, new LaunchOptions());
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception e)
-        {
-            await ShowInfo(MainAppWindow!, e.Friendly());
-        }
     }
 
     public static async Task Pcl2TakeOverDialog(MainWindow window, bool userInitiated = false)

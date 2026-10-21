@@ -24,6 +24,12 @@ public sealed partial class MainWindow : Window
     private double? _captionBackdropLuminance;
     private bool _whiteCaption;
     private bool _diagnosticsRunning;
+    private readonly HintOverlay _hints = new();
+    internal void ShowHint(string text, HintKind kind)
+    {
+        if (DispatcherQueue.HasThreadAccess) _hints.Show(text, kind);
+        else DispatcherQueue.TryEnqueue(() => _hints.Show(text, kind));
+    }
     internal void SetDiagnosticsRunning(bool running)
     {
         _diagnosticsRunning = running; Shell.IsHitTestVisible = !running;
@@ -140,6 +146,7 @@ public sealed partial class MainWindow : Window
         if (diagnostics) SetDiagnosticsRunning(true);
         Shell.PreviewKeyDown += (_, args) => { if (_diagnosticsRunning) args.Handled = true; };
         ContentRegion.Children.Insert(0, new DotGridControl());
+        ContentRegion.Children.Add(_hints);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(DragRegion);
         ApplyCaptionContrast();

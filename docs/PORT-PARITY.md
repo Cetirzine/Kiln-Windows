@@ -30,7 +30,7 @@ macOS / Apple Silicon / ARM64 专属优化不移植：Metal、Rosetta、LWJGL ar
 | AccountUI.swift / HomePage.swift | 微软皮肤/披风、皮肤库无入口，离线改名/顺序/重新登录缺失 | 已补 UI 入口与服务接线，微软账号实际登录/皮肤上传/改名仍需真实账号环境验收 |
 | ProfileSheet | 改名可用性检查存在过期响应、对话框嵌套风险 | 已加代次检查、可用状态控制按钮与自定义弹窗；待交互验收 |
 | SetupPage.swift | 缺五标签、Java 管理、额外参数等；控件列不齐 | 已重写五标签与缺失设置，统一 230pt 名称列 / 320pt 控件；待复测 |
-| SystemIntegration.swift | 只有任务栏闪烁，缺真实通知、任务进度、最近版本菜单 | 待补 Windows 等价行为 |
+| SystemIntegration.swift | 启动链接丢失存档/服务器参数，重复打开创建新窗口，快捷方式覆盖同名文件且无实例图标；缺真实通知、任务进度、最近版本菜单 | 已补链接统一解析、单实例转交与窗口恢复、原生 .lnk/实例图标/同名避让、右下角轻提示，见下方未发布验证；系统通知、任务栏进度与最近版本入口仍待补 |
 | FolderWatcher.swift | 原版外部文件变更刷新；Windows 无统一实现 | 已给版本列表/Mod 管理增加监视，其他页面待补 |
 | PCL2（Windows 附加功能） | 旧自检直接写入 Pcl2TakenOver 导致弹窗跳过 | 已新增实际 UI 确认标记及设置手动入口，待弹窗验收 |
 | 发布体积 | v0.2.10 ZIP 93,733,936 bytes，捆入 ONNX/DirectML/AI/Search | 已改为 WinUI 必要依赖；自包含预览 ZIP 约 68.9 MB，减少约 26%；未删运行时。程序名及产品元数据统一为 Kiln，待独立运行/自动更新验收 |
@@ -70,6 +70,16 @@ macOS / Apple Silicon / ARM64 专属优化不移植：Metal、Rosetta、LWJGL ar
 UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、InstanceContent、AccountUI、SetupPage、AboutPage、ImportUI、ModpackUI、IconPicker、BlockIcon、BlockTextures、DotScene/Classic/Drops/Versions、LogoMark。App 层：KilnApp、Intents、SystemIntegration、FolderWatcher、Snapshot、SelfTest、Main。
 
 ## 必须完成的验证
+
+2026-10-21 后续本地实现（未发布，GitHub 最新 Release 仍为 0.2.12w）：
+
+- 统一 `LaunchLink`：支持 `launch` / `play`、路径优先、`instance` 查询回退、当前选中版本、存档/服务器参数、重复参数取第一项、Unicode 与保留字符编码；任务和崩溃日志动作共用路由。链接解析/选中版本/启动选项已回归，未用合成检查冒充真实游戏启动。
+- 单实例通道按用户 SID 和会话区分，使用系统命名互斥量与仅当前用户可访问的命名管道。握手确认接收方 PID、限制消息长度与读取时间、确认请求接收，退出释放所有权；已有窗口处理第二次打开、最小化恢复和完整协议参数。启动未就绪或有自定义弹窗时暂存请求，准备游戏期间忽略重复启动，仍可打开任务/日志。
+- 原生检查启动独立 Kiln 子进程，调用与正式启动相同的所有权/转交方法，确认子进程无窗口且正常退出；再实际通过 Windows Shell 执行临时 .lnk，确认完整存档/服务器参数到达现有窗口。测试使用随机隔离通道，不接管真实运行的启动器，不改协议注册或登录。
+- 桌面快捷方式使用 Windows 自带 [IShellLinkW](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-ishelllinkw)，包含启动器目标、工作目录、编码后的链接及持久实例 ICO；以 CreateNew 预留名称，不覆盖同名文件。快捷方式设置与进程相同的 [AppUserModel.ID](https://learn.microsoft.com/en-us/windows/win32/properties/props-system-appusermodel-id)。临时目录中由原生 Shell 读回目标/参数/图标/身份，并用 Windows LoadImage 加载 16/32/48/256px 图标均通过。
+- 实例图标导出复用界面的等轴测几何、材质与配色；补原版 Grass 的侧面草皮和 Kiln 炉口火光，保留材质透明度。图标存储在支持目录而非可清理缓存，重复创建共享相同内容的 ICO。
+- 按 Theme.swift 恢复右下角 320pt 轻提示：最多四条、颜色标记、边框/硬阴影、淡入淡出、按文字长度延时、悬停保留、手动关闭。复制链接和创建快捷方式改用轻提示；其他页面仍需逐处对照适用 Hint / MsgBox 的场景。连发测试发现未加载时 Parent 为空会遗留第五条卡片，已改为显式保存/移除卡片容器；可控时钟/悬停状态与实际关闭控件检查通过。
+- 自动更新恢复原版六小时间隔，仅成功读取后记检查时间。未添加包依赖；自包含预览为 `publish/Kiln-system-integration-preview/`，111 项核心回归、63 项原生 UI 检查通过，报告 `artifacts/ui-system-integration-preview.json`。诊断新增可选 `--exit-after-test`，检查结束自动关闭自己的窗口。
 
 - 从 Swift 自检移植独立回归测试，在临时目录运行；禁止调用旧默认自检，因为它会迁移真实 PCL2 配置。
 - 离线 UUID、规则、Maven 路径、参数分割、NeoForge 版本、log4j 分段解析、崩溃分析、版本比较、依赖保护、复制重命名、路径安全、旧 JSON 兼容、皮肤验证。

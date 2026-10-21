@@ -73,6 +73,17 @@ public sealed class BlockIconControl : UserControl
         var size = (int)Math.Max(8, Math.Min(ActualWidth, ActualHeight));
         if (size < 8) return false;
         var bitmap = new WriteableBitmap(size, size);
+        var pixels = RenderTexture(faces, size);
+        for (var i = 0; i < pixels.Length; i += 4)
+            for (var c = 0; c < 3; c++) pixels[i + c] = (byte)(pixels[i + c] * pixels[i + 3] / 255);
+        using (var stream = bitmap.PixelBuffer.AsStream()) stream.Write(pixels);
+        bitmap.Invalidate();
+        _grid.Children.Add(new Microsoft.UI.Xaml.Controls.Image { Source = bitmap, Width = size, Height = size, Stretch = Stretch.Uniform });
+        return true;
+    }
+
+    private static byte[] RenderTexture(BlockTextures.Faces faces, int size)
+    {
         var pixels = new byte[size * size * 4];
         var g = new IsoGeometry(size, size);
         // 每个面：origin + 两个基向量；对目标每像素反算 (u,v) 采样
@@ -110,39 +121,38 @@ public sealed class BlockIconControl : UserControl
                     pixels[di] = B;
                     pixels[di + 1] = G;
                     pixels[di + 2] = R;
-                    pixels[di + 3] = 255;
+                    pixels[di + 3] = src[i + 3];
                 }
         }
         Face(faces.Top, faces.TopW, faces.TopH, g.Left, g.Top, g.Center, 0);
         Face(faces.Left, faces.LeftW, faces.LeftH, g.Left, g.Center, g.LeftBottom, 0.2);
         Face(faces.Right, faces.RightW, faces.RightH, g.Center, g.Right, g.Bottom, 0.4);
-        using (var stream = bitmap.PixelBuffer.AsStream())
-            stream.Write(pixels, 0, pixels.Length);
-        bitmap.Invalidate();
-        _grid.Children.Add(new Microsoft.UI.Xaml.Controls.Image
-        {
-            Source = bitmap, Width = size, Height = size, Stretch = Stretch.Uniform,
-        });
-        return true;
+        return pixels;
     }
 
     /// 代码绘制的等轴测方块（本机还没有游戏文件时使用；配色与原版 DrawnBlock 一致）
     private void Drawn()
     {
-        var w = ActualWidth;
-        var h = ActualHeight;
-        var g = new IsoGeometry(w, h);
-        var (top, left, right, mark) = Palette(_kind);
-        static Polygon Poly(Windows.UI.Color c, params Point[] points)
+        foreach (var face in DrawnFaces(_kind, ActualWidth, ActualHeight))
         {
-            var p = new Polygon { Fill = new SolidColorBrush(c) };
-            foreach (var pt in points) p.Points.Add(pt);
-            return p;
+            var p = new Polygon { Fill = new SolidColorBrush(Windows.UI.Color.FromArgb(face.Alpha, (byte)(face.Color >> 16), (byte)(face.Color >> 8), (byte)face.Color)) };
+            foreach (var point in face.Points) p.Points.Add(point);
+            _grid.Children.Add(p);
         }
-        Windows.UI.Color C(uint hex) => Windows.UI.Color.FromArgb(255, (byte)((hex >> 16) & 0xFF), (byte)((hex >> 8) & 0xFF), (byte)(hex & 0xFF));
-        _grid.Children.Add(Poly(C(top), g.Top, g.Right, g.Center, g.Left));
-        _grid.Children.Add(Poly(C(left), g.Left, g.Center, g.Bottom, g.LeftBottom));
-        _grid.Children.Add(Poly(C(right), g.Center, g.Right, g.RightBottom, g.Bottom));
+    }
+
+    private sealed record FaceShape(uint Color, byte Alpha, params Point[] Points);
+    private static List<FaceShape> DrawnFaces(string kind, double width, double height)
+    {
+        var g = new IsoGeometry(width, height);
+        var (top, left, right, mark) = Palette(kind);
+        var faces = new List<FaceShape> { new(top, 255, g.Top, g.Right, g.Center, g.Left), new(left, 255, g.Left, g.Center, g.Bottom, g.LeftBottom), new(right, 255, g.Center, g.Right, g.RightBottom, g.Bottom) };
+        if (kind == "Grass")
+        {
+            var d = height * .12;
+            faces.Add(new(0x5ea43a, 255, g.Left, g.Center, new Point(g.Center.X, g.Center.Y + d), new Point(g.Left.X, g.Left.Y + d)));
+            faces.Add(new(0x5ea43a, 204, g.Center, g.Right, new Point(g.Right.X, g.Right.Y + d), new Point(g.Center.X, g.Center.Y + d)));
+        }
         if (mark is { } m)
         {
             // 顶面中央的标记
@@ -151,8 +161,43 @@ public sealed class BlockIconControl : UserControl
             var p2 = new Point(g.Center.X + (g.Right.X - g.Center.X) * (1 - s * 1.4), g.Left.Y);
             var p3 = new Point(g.Center.X, g.Center.Y - (g.Center.Y - g.Top.Y) * s);
             var p4 = new Point(g.Center.X - (g.Center.X - g.Left.X) * (1 - s * 1.4), g.Left.Y);
-            _grid.Children.Add(Poly(Windows.UI.Color.FromArgb(217, (byte)((m >> 16) & 0xFF), (byte)((m >> 8) & 0xFF), (byte)(m & 0xFF)), p1, p2, p3, p4));
+            faces.Add(new(m, 217, p1, p2, p3, p4));
         }
+        if (kind == "Kiln")
+        {
+            Point OnLeft(double u, double v)
+            {
+                var x = g.Left.X + (g.Center.X - g.Left.X) * u; var y = g.Left.Y + (g.Center.Y - g.Left.Y) * u;
+                return new(x, y + (g.LeftBottom.Y + (g.Bottom.Y - g.LeftBottom.Y) * u - y) * v);
+            }
+            faces.Add(new(0x2a2a28, 255, OnLeft(.25, .45), OnLeft(.75, .45), OnLeft(.75, .85), OnLeft(.25, .85)));
+            faces.Add(new(0xf29a3a, 255, OnLeft(.3, .62), OnLeft(.7, .62), OnLeft(.7, .8), OnLeft(.3, .8)));
+        }
+        return faces;
+    }
+
+    internal static byte[] RenderIconPixels(string kind, int size)
+    {
+        if (BlockTextures.Shared.GetTexture(kind) is { } texture) return RenderTexture(texture, size);
+        var pixels = new byte[size * size * 4];
+        foreach (var face in DrawnFaces(kind, size, size))
+        for (var y = 0; y < size; y++) for (var x = 0; x < size; x++)
+        {
+            var hits = 0;
+            for (var sampleY = 0; sampleY < 2; sampleY++) for (var sampleX = 0; sampleX < 2; sampleX++)
+            {
+                var dx = .25 + sampleX * .5; var dy = .25 + sampleY * .5;
+                bool inside = false; var points = face.Points;
+                for (int i = 0, j = points.Length - 1; i < points.Length; j = i++)
+                    if ((points[i].Y > y + dy) != (points[j].Y > y + dy) && x + dx < (points[j].X - points[i].X) * (y + dy - points[i].Y) / (points[j].Y - points[i].Y) + points[i].X) inside = !inside;
+                if (inside) hits++;
+            }
+            if (hits == 0) continue;
+            var p = (y * size + x) * 4; var alpha = face.Alpha / 255.0 * hits / 4; var oldAlpha = pixels[p + 3] / 255.0; var resultAlpha = alpha + oldAlpha * (1 - alpha);
+            for (var c = 0; c < 3; c++) pixels[p + c] = (byte)Math.Round((((face.Color >> (c * 8)) & 255) * alpha + pixels[p + c] * oldAlpha * (1 - alpha)) / resultAlpha);
+            pixels[p + 3] = (byte)Math.Round(resultAlpha * 255);
+        }
+        return pixels;
     }
 
     private static (uint Top, uint Left, uint Right, uint? Mark) Palette(string kind) => kind switch
