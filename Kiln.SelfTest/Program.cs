@@ -8,6 +8,7 @@ using System.Diagnostics;
 // 无参数：PCL2 检测/接管/验证 + Java 搜索
 
 if (args.Length >= 2 && args[0] == "--java-command-fixture") return await JavaTests.Child(args[1], args.Length >= 3 ? args[2] : null);
+if (args.Length >= 3 && args[0] == "-cp" && args[2] == "Kiln.ProcessorFixture") return await JavaTests.ProcessorChild(args[1], args.Skip(3).ToArray());
 if (args.SequenceEqual(new[] { "-XshowSettings:properties", "-version" })) return Environment.GetEnvironmentVariable("KILN_JAVA_FIXTURE") == "properties" ? await JavaTests.Child("properties", null) : 64;
 if (args.Length >= 2 && args[0] == "--game-smoke") return await GameSmoke.Start(args[1], args.Length >= 3 ? args[2] : "1.21.1", args.Length >= 4 ? args[3] : "Vanilla");
 if (args.Length >= 4 && args[0] == "--game-smoke-resume") return await GameSmoke.Resume(args[1], args[2], args[3]);

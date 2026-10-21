@@ -87,6 +87,23 @@ internal static class JavaTests
                 Environment.SetEnvironmentVariable("DOTNET_ROOT", Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..")));
                 var inspected = await JavaManager.InspectAsync(fixtureExe);
                 check("Actual executable inspection supports spaces, brackets, Unicode and both pipes", inspected is { Major: 21, Version: "21.0.8", Arch: "x86_64" } && inspected.Path == fixtureExe);
+                var processorReceipt = Path.Combine(root, "processor-arguments.json");
+                var processorArgs = new[] { "argument with spaces", "中文 [验收] O'Brien", "literal\"quote", "trailing slash\\", "" };
+                var processorClasspath = Path.Combine(bin, "first.jar") + ";" + Path.Combine(bin, "second.jar");
+                await ForgeInstaller.RunProcessor(fixtureExe, processorClasspath, "Kiln.ProcessorFixture", new[] { "arguments", processorReceipt }.Concat(processorArgs).ToArray(), bin, default);
+                using (var received = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(processorReceipt)))
+                    check("Forge processors drain both pipes and preserve exact arguments and working directory",
+                        received.RootElement.GetProperty("classpath").GetString() == processorClasspath && received.RootElement.GetProperty("cwd").GetString() == bin && received.RootElement.GetProperty("arguments").EnumerateArray().Select(v => v.GetString()).SequenceEqual(processorArgs));
+                var processorFailed = false;
+                try { await ForgeInstaller.RunProcessor(fixtureExe, processorClasspath, "Kiln.ProcessorFixture", new[] { "failure" }, bin, default); }
+                catch (LauncherException error) { processorFailed = error.Message.Contains("Broken Java fixture"); }
+                check("Forge processor failure reports its actual diagnostic output", processorFailed);
+                var processorPid = Path.Combine(root, "processor-cancel.pid"); using var processorStop = new CancellationTokenSource();
+                var processorTask = ForgeInstaller.RunProcessor(fixtureExe, processorClasspath, "Kiln.ProcessorFixture", new[] { "cancel", processorPid }, bin, processorStop.Token);
+                elapsed.Restart(); while (!File.Exists(processorPid) && elapsed.Elapsed < TimeSpan.FromSeconds(4)) await Task.Delay(20);
+                processorStop.Cancel(); var processorCancelled = false;
+                try { await processorTask; } catch (OperationCanceledException) { processorCancelled = true; }
+                check("Cancelling a Forge processor ends its owned Java process", processorCancelled && await Dead(processorPid));
             }
             finally { Environment.SetEnvironmentVariable("KILN_JAVA_FIXTURE", priorFixture); Environment.SetEnvironmentVariable("DOTNET_ROOT", priorDotnet); }
         }
@@ -116,5 +133,15 @@ internal static class JavaTests
         async Task Flood(TextWriter writer) { for (var i = 0; i < 512; i++) await writer.WriteAsync(block); await writer.FlushAsync(); }
         await Task.WhenAll(Flood(Console.Out), Flood(Console.Error));
         Console.Out.WriteLine("java.version = 21.0.8"); Console.Error.WriteLine("os.arch = amd64"); return 0;
+    }
+    internal static async Task<int> ProcessorChild(string classpath, string[] args)
+    {
+        if (args.Length == 0) return 64;
+        if (args[0] == "failure") return await Child("nonzero", null);
+        if (args.Length < 2) return 64;
+        if (args[0] == "cancel") return await Child("hang", args[1]);
+        if (args[0] != "arguments") return 64;
+        await File.WriteAllTextAsync(args[1], System.Text.Json.JsonSerializer.Serialize(new { classpath, cwd = Environment.CurrentDirectory, arguments = args.Skip(2) }));
+        return await Child("properties", null);
     }
 }

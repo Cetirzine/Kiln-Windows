@@ -74,8 +74,8 @@ UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、Inst
 
 尚未发布的 Windows Java / 实际启动修改：
 
-- Java 双管道读取、超时/取消、x86 识别、Windows 基础 CDS 路径和原生库架构过滤已修复；实际窗口取代日志/20 秒猜测，防止启动器过早隐藏。166 项核心、149 项 UI 回归通过，构建无警告/错误。
-- 真实 Vanilla 1.21.1 已在独立特殊字符路径中完成安装、进入主菜单、正常关闭、首次写入 CDS 以及第二次复用缓存。首次动态缓存有显著 Windows JDK 清单解析延迟，尚需改善；加载器矩阵和其余功能未全部完成。证据和边界见 [GAME-LAUNCH-VERIFICATION.md](GAME-LAUNCH-VERIFICATION.md)。
+- Java 双管道读取、超时/取消、x86 识别、Windows 基础 CDS 路径和原生库架构过滤已修复；实际窗口取代日志/20 秒猜测，防止启动器过早隐藏。安装处理器也接入可取消的后台双管道执行，补上文件准备/校验进度。169 项核心、149 项 UI 回归通过，构建无警告/错误。
+- 真实 Vanilla / Fabric / Quilt 1.21.1 已在独立特殊字符路径中完成安装、进入实际窗口、正常关闭并生成 CDS；Vanilla 第二次确认复用缓存。首次动态缓存有显著 Windows JDK 清单解析延迟，尚需改善；Forge 安装成功但含方括号路径的模块 URI 导致启动失败，NeoForge 未开始。加载器矩阵和其余功能未全部完成。证据和边界见 [GAME-LAUNCH-VERIFICATION.md](GAME-LAUNCH-VERIFICATION.md)。
 
 0.2.16w 任务与滚动控件：
 

@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Kiln.Core;
 
 /// Forge / NeoForge 安装（实现思路参考 HMCL：解析安装器中的 install_profile.json，下载支持库并运行 processors）
@@ -20,6 +18,7 @@ public static class ForgeKindExtensions
 
 public static class ForgeInstaller
 {
+    private const int InstallStages = 9;
     public sealed record Version(string VersionString)
     {
         public string Id => VersionString;
@@ -91,7 +90,8 @@ public static class ForgeInstaller
 
     public static async Task Install(ForgeKind kind, string version, RemoteVersion game, string name, string folder, Job job)
     {
-        const int total = 5;
+        const int total = InstallStages;
+        job.Token.ThrowIfCancellationRequested();
         var libraries = Path.Combine(folder, "libraries");
 
         // 1. 原版
@@ -100,15 +100,15 @@ public static class ForgeInstaller
         if (!File.Exists(vanillaJson))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(vanillaJson)!);
-            await Downloader.Fetch(new DownloadItem(game.Url, vanillaJson, game.Sha1, kind: Net.Kind.VersionList));
+            await Downloader.Fetch(new DownloadItem(game.Url, vanillaJson, game.Sha1, kind: Net.Kind.VersionList), ct: job.Token);
         }
         var vanilla = new McInstance(folder, game.Id);
-        await Installer.CompleteFiles(vanilla, null);
+        await Installer.CompleteFiles(vanilla, job, stageOffset: 0, stageCount: total);
 
         // 2. 安装器
-        job.Enter(T.Invoke($"下载 {kind.Id()} 安装器", $"Downloading the {kind.Id()} installer"), 1, total);
+        job.Enter(T.Invoke($"下载 {kind.Id()} 安装器", $"Downloading the {kind.Id()} installer"), 3, total);
         var installer = Path.Combine(Paths.Cache, $"{kind.Id().ToLowerInvariant()}-{version}-installer.jar");
-        await Downloader.Fetch(new DownloadItem(kind.InstallerUrl(version), installer));
+        await Downloader.Fetch(new DownloadItem(kind.InstallerUrl(version), installer), ct: job.Token);
         var profileData = Zip.Read(installer, "install_profile.json")
             ?? throw new LauncherException(T.Invoke("安装器中缺少 install_profile.json", "install_profile.json is missing from the installer"));
         // 旧地址替换为新的 HTTPS 地址
@@ -131,12 +131,12 @@ public static class ForgeInstaller
             await InstallModern(profile, installer, vanilla, game, name, targetDir, folder, libraries, job);
         }
 
-        job.Enter(T.Invoke("检查文件", "Verifying files"), 4, total);
+        job.Enter(T.Invoke("检查文件", "Verifying files"), 6, total);
         var instance = new McInstance(folder, name);
         var setup = instance.Setup;
         setup.Isolation = instance.Isolated;
         LauncherSettings.Shared.SaveInstanceSetup(setup, targetDir);
-        await Installer.CompleteFiles(instance, null);
+        await Installer.CompleteFiles(instance, job, stageOffset: 6, stageCount: total);
         if (LauncherSettings.Shared.GameLanguageAuto) Installer.WriteGameLanguage(instance);
     }
 
@@ -151,7 +151,7 @@ public static class ForgeInstaller
     private static async Task InstallLegacy(Json profile, string installer, RemoteVersion game, string name,
         string targetDir, string libraries, Job job)
     {
-        job.Enter(T.Invoke("安装支持库", "Installing libraries"), 2, 5);
+        job.Enter(T.Invoke("安装支持库", "Installing libraries"), 4, InstallStages);
         var install = profile["install"];
         if (install["path"].String is { } coords && install["filePath"].String is { } file && Maven.Path(coords) is { } rel)
         {
@@ -176,7 +176,7 @@ public static class ForgeInstaller
         var versionJson = Json.Parse(versionData);
 
         // 支持库：安装器内置的直接解压，其余下载
-        job.Enter(T.Invoke("下载支持库", "Downloading libraries"), 2, 5);
+        job.Enter(T.Invoke("下载支持库", "Downloading libraries"), 4, InstallStages);
         var items = new List<DownloadItem>();
         foreach (var lib in profile["libraries"].Array.Concat(versionJson["libraries"].Array))
         {
@@ -235,7 +235,7 @@ public static class ForgeInstaller
             for (var i = 0; i < processors.Count; i++)
             {
                 job.Token.ThrowIfCancellationRequested();
-                job.Enter(T.Invoke($"运行安装处理器 {i + 1}/{processors.Count}", $"Running processor {i + 1}/{processors.Count}"), 3, 5);
+                job.Enter(T.Invoke($"运行安装处理器 {i + 1}/{processors.Count}", $"Running processor {i + 1}/{processors.Count}"), 5, InstallStages);
                 job.FileFraction = (double)i / processors.Count;
                 var p = processors[i];
                 var jarCoords = p["jar"].String;
@@ -258,7 +258,8 @@ public static class ForgeInstaller
                 // Windows 的 classpath 分隔符是分号
                 var cp = string.Join(";", cpList);
                 var args = p["args"].Array.Select(a => a.String).Where(s => s != null).Select(s => Substitute(s!)).ToList();
-                RunProcessor(java.Path, cp, mainClass, args, work);
+                await RunProcessor(java.Path, cp, mainClass, args, work, job.Token);
+                job.FileFraction = (double)(i + 1) / processors.Count;
             }
         }
         WriteVersionJson(versionJson, name, game.Id, targetDir);
@@ -279,23 +280,13 @@ public static class ForgeInstaller
         return v;
     }
 
-    private static void RunProcessor(string java, string classpath, string mainClass, IReadOnlyList<string> args, string cwd)
+    internal static async Task RunProcessor(string java, string classpath, string mainClass, IReadOnlyList<string> args, string cwd, CancellationToken cancellationToken)
     {
-        var info = new ProcessStartInfo
-        {
-            FileName = java,
-            Arguments = "-cp \"" + classpath + "\" " + mainClass + " " + string.Join(" ", args.Select(a => "\"" + a + "\"")),
-            WorkingDirectory = cwd,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
         Log.log($"[Forge] 运行处理器 {mainClass} {string.Join(" ", args)}");
-        using var p = Process.Start(info)!;
-        var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-        p.WaitForExit();
-        if (p.ExitCode != 0)
+        var result = await JavaCommand.Run(java, new[] { "-cp", classpath, mainClass }.Concat(args), TimeSpan.FromMinutes(15), cancellationToken, cwd).ConfigureAwait(false);
+        if (result.ExitCode != 0)
         {
+            var output = result.Output;
             var text = output.Length > 4000 ? output[^4000..] : output;
             Log.log($"[Forge] 处理器失败：{text}");
             throw new LauncherException(T.Invoke($"安装处理器运行失败（{mainClass}）：", $"Processor failed ({mainClass}): ")

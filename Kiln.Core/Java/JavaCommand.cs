@@ -7,10 +7,11 @@ namespace Kiln.Core;
 internal static class JavaCommand
 {
     internal sealed record Result(int ExitCode, string Output);
-    internal static async Task<Result> Run(string executable, IEnumerable<string> arguments, TimeSpan timeout, CancellationToken cancellationToken = default)
+    internal static async Task<Result> Run(string executable, IEnumerable<string> arguments, TimeSpan timeout, CancellationToken cancellationToken = default, string? workingDirectory = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        if (workingDirectory != null) start.WorkingDirectory = workingDirectory;
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new IOException("Java could not be started.");
         using var reads = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
