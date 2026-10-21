@@ -80,6 +80,7 @@ UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、Inst
 - 任务 UI 对非有限进度值回退为零，避免将 NaN 传入原生进度控件。新增完整链路检查通过真实 `Downloader` 从一次性 loopback HTTP 服务分块下载到临时目录，观察实际任务进度条前进，再点击真实取消按钮确认传输终止、进度收起，最后清理已结束项并检查空态。未安装游戏或接触真实游戏文件。
 - 复测发现原侧栏检查依赖固定 30ms，偶发在 Content 新模板接入前读取，已改为实际布局/控件就绪等待（上限 3 秒），保留原始 50% 宽度断言。最终 140 项核心、149 项 UI 和 17 项 Windows 集成检查全部通过，未处理 UI 异常为零；浅色/深色任务页已查看。最终程序为 `publish/Kiln-v0.2.16w-verified/`，报告 `artifacts/ui-v0.2.16w-final.json` / `artifacts/parity-v0.2.16w-final.txt` / `artifacts/os-v0.2.16w-final.json`。
 - 最终安装包 46,874,574 bytes，SHA-256 `fba388942a2802ca02eb890cfc7a0929bb7abc8839b5954c1a86f22e6954f42c`；ZIP 69,529,716 bytes，SHA-256 `488d1cd6645b29e405ed1f643df6ca4627f2cdb10180c57c59dfebc7c6446ded`。EXE/Core 版本、ZIP 必需运行文件均核对通过，未增加依赖。
+- [0.2.16w 正式发布](https://github.com/Cetirzine/Kiln-Windows/releases/tag/v0.2.16w)，标签为 `01e031c0f6c54a8531c877b22cdcc6ccf9ad0a23`。四个远端附件的状态、大小、SHA-256 与本地一致；latest 已指向该正式版。发布后自身检查从 0.2.15w 成功识别 0.2.16w，常规/官方网页后备的摘要与大小一致，当前 0.2.16w 不重复提示；报告 `artifacts/updater-discovery-v0.2.16w-final.json`，没有执行用户安装目录的替换。
 - 新增 `--show-tasks` / `--preview-dark` 仅用于诊断结束后的临时状态预览；不用于真实账号登录或程序更新。全页面视觉、账号及实际游戏/整合包验收、最近版本入口和其余监视功能仍未全部完成，总目标保持未完成。
 
 0.2.15w 设置与自定义控件：
