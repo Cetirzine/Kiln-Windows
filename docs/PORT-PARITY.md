@@ -83,6 +83,7 @@ UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、Inst
 - 已创建页面的代码绘制颜色改用可更新的主题画笔，深浅色切换同步更新文字和卡片；恢复原版标题栏、标题文字、选中底色和硬阴影色。原生模板继续使用 ThemeResource。按钮按下位移修为原版 2pt。
 - 诊断设置使用独立内存模型，不写实际设置或应用全局语言；诊断窗口也不再写窗口预设或选中版本。140 项核心回归、130 项原生 UI 及 17 项 Windows 集成检查全部通过，三语言/三档窗口遍历五个设置标签；游戏、性能、Java、下载设置与自定义菜单画面已查看。最终发布目录 `publish/Kiln-v0.2.15w-verified/`，报告为 `artifacts/ui-v0.2.15w-final.json`、`artifacts/os-v0.2.15w-final.json` 和 `artifacts/parity-v0.2.15w-final.txt`。
 - 最终安装包 46,864,220 bytes，SHA-256 `fb012cef5fdce9a14a0c347b160a7b0c1630ba5f2b5b0dc8a102962a5e673f44`；便携 ZIP 69,517,998 bytes，SHA-256 `1db1c40758246fb3c49c5653b12327212cb5e5c13b196cf6dc912fa1e2eb2ec2`。EXE 与 Core 版本均为 0.2.15w，ZIP 必需运行文件已核对，未新增 NuGet 依赖。
+- [0.2.15w 正式 Release](https://github.com/Cetirzine/Kiln-Windows/releases/tag/v0.2.15w) 于 2026-10-21 发布，标签指向 `edb3bcc4e26562494340dd7b64790568f66bad0f`。发布前逐一核对四个远端附件的 uploaded 状态、大小及 SHA-256；发布后确认 latest 为该正式版，并以程序更新代码从 0.2.14w 检查：常规路径与官方网页后备均返回 0.2.15w、相同 ZIP 摘要/大小，当前 0.2.15w 不重复提示。报告 `artifacts/updater-discovery-v0.2.15w-final.json`；此检查不执行安装。
 - 仍未覆盖全部页面、滚动条/进度条等所有可见默认模板；完整微软账号、各加载器真实游戏启动和全页视觉 1:1 验收仍未完成，不能据此标记总目标完成。
 
 0.2.14w 自动更新修复与隔离验收：见 [AUTO-UPDATE-VERIFICATION.md](AUTO-UPDATE-VERIFICATION.md)。程序包为 `publish/Kiln-v0.2.14w-verified/`；135 项核心、94 项 UI、17 项系统集成、11 项更新回归与 8 项真实联网替换检查通过。应用内更新弹窗与安装/重启链路分别验证；额外的单次 UI 自动安装测试被审批策略拒绝，不能宣称该项已通过。设置、控件的其余原版对照继续进行，真实游戏与账号验收仍未完成。
