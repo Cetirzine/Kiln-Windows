@@ -77,9 +77,11 @@ UI 源文件：MainView、Theme、HomePage、DownloadPage、InstancePages、Inst
 - 首页运行记录改为更新标题栏中的紧凑入口，详细的最多三条记录使用 Kiln 自定义弹窗。首页可一键隐藏，弹窗每条记录也有 ×；只隐藏展示，不杀进程或移除运行跟踪。隐藏状态跨页面保留，新一轮启动重新出现；标题行预留固定高度，记录数量变化不改变像素动画区域高度。三档窗口新增 18 项原生检查通过。
 - Forge 特殊字符目录使用稳定的 Windows 目录联接映射，仅对 Java 启动路径生效，保留原实例位置、文件内容和 UI 身份；映射位于启动器数据目录，缓存清理不会遍历它。实际 Forge 52.1.20 已在原含中文、空格、方括号和单引号的目录中启动、加载图集并正常退出。
 - NeoForge 的真实安装完成六个处理器。Java 21 在含 URI 编码字符的模块路径上创建动态 CDS 时会于 main 前退出，现对此组合保留默认基础 CDS，跳过不兼容的动态归档；其他 classpath 启动与 Java 25 AOT 保留。实际 NeoForge 1.21.1 已启动、加载图集并正常退出。
-- 179 项核心回归通过；最终发布程序的 UI 与系统检查、附件摘要及正式发布信息在发布后补录。未增加包依赖，保留自包含运行时。首次动态 CDS 准备仍可能较慢，完整账号与全部页面逐像素验收仍未作为已完成项。
+- 最终 179 项核心、167 项原生 UI、17 项 Windows 集成检查全部通过，未处理 UI 异常为零。报告：`artifacts/parity-v0.2.17w-final.txt`、`artifacts/ui-v0.2.17w-final.json`、`artifacts/system-v0.2.17w-final.json`。发布目录 `publish/Kiln-v0.2.17w-verified/`，与前版同为 466 个文件，未增加依赖并保留自包含运行时。
+- [0.2.17w 正式发布](https://github.com/Cetirzine/Kiln-Windows/releases/tag/v0.2.17w)，标签指向 `873df57eb52d54d049e78aa484a2b9e8a5953ae2`，latest 已更新。安装包 46,879,415 bytes / SHA-256 `069ccd82bb4eee70fab7c682ec913992ae1c311b4b42f374834e7817ddb62616`；ZIP 69,543,751 bytes / `be0405ba24da32aa0b1961ce56e4d056252b6da203cbfb05ef0bbea7a6168a4e`。四个远端附件逐一核对大小、摘要和 uploaded 状态通过；自身更新代码从 0.2.16w 及官方网页后备都发现 0.2.17w，摘要一致，当前版不重复提示。报告：`artifacts/updater-discovery-v0.2.17w-final.json`。
+- 首次动态 CDS 准备仍可能较慢，完整账号与全部页面逐像素验收仍未作为已完成项；本版不据此宣称总目标已经达到完整验收。
 
-尚未发布的 Windows Java / 实际启动修改：
+纳入 0.2.17w 的 Windows Java / 实际启动修改：
 
 - Java 双管道读取、超时/取消、x86 识别、Windows 基础 CDS 路径和原生库架构过滤已修复；实际窗口取代日志/20 秒猜测，防止启动器过早隐藏。安装处理器也接入可取消的后台双管道执行，补上文件准备/校验进度。169 项核心、149 项 UI 回归通过，构建无警告/错误。
 - 真实 Vanilla / Fabric / Quilt 1.21.1 已在独立特殊字符路径中完成安装、进入实际窗口、正常关闭并生成 CDS；Vanilla 第二次确认复用缓存。首次动态缓存有显著 Windows JDK 清单解析延迟，尚需改善；Forge 安装成功但含方括号路径的模块 URI 导致启动失败，NeoForge 未开始。加载器矩阵和其余功能未全部完成。证据和边界见 [GAME-LAUNCH-VERIFICATION.md](GAME-LAUNCH-VERIFICATION.md)。
