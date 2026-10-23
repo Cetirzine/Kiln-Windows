@@ -121,19 +121,21 @@ public static class Launcher
             LauncherSettings.Shared.WindowModeSetting != WindowMode.Fullscreen);
         var libs = instance.Libraries(ctx);
         ExtractNatives(instance, libs, java.Arch);
-        var args = BuildArguments(instance, java, login, libs, ctx, options);
+        var paths = GamePathAliases.Prepare(instance);
+        var args = paths.Apply(BuildArguments(instance, java, login, libs, ctx, options));
+        var workingDirectory = paths.Apply(instance.GameDir);
         Log.log($"[Launch] 启动参数：{Redact(string.Join(" ", args), login)}");
 
         if (options.ExportScript is { } script)
         {
-            ExportScript(java, args, instance.GameDir, script);
+            ExportScript(java, args, workingDirectory, script);
             return null;
         }
         LauncherSettings.Shared.SelectedInstance = instance.Name;
         var setup = instance.Setup;
         setup.LastPlayed = DateTime.UtcNow;
         LauncherSettings.Shared.SaveInstanceSetup(setup, instance.Dir);
-        var game = Run(instance, java, args, login, callbacks);
+        var game = Run(instance, java, args, login, callbacks, workingDirectory);
         game.Instance = instance;
         game.Java = java;
         game.CommandLine = Redact(string.Join(" ", args), login);
@@ -315,7 +317,10 @@ public static class Launcher
             args.AddRange(new[] { "-XX:+UnlockExperimentalVMOptions", "-XX:+UseCompactObjectHeaders" });
         // Java agent（如 authlib-injector）与动态 CDS / AOT 缓存的生成不兼容
         var hasAgent = existing.Concat(custom).Any(a => a.StartsWith("-javaagent:"));
-        if (s.ClassDataSharing && java.HasBaseCDS && !hasAgent)
+        var dynamicCdsSupported = DynamicCdsSupported(java.Major, existing.Concat(custom), classpath);
+        if (s.ClassDataSharing && java.HasBaseCDS && !hasAgent && !dynamicCdsSupported)
+            Log.log("[Java] This Java 21 module path cannot create a dynamic CDS archive; using the default base archive.");
+        if (s.ClassDataSharing && java.HasBaseCDS && !hasAgent && dynamicCdsSupported)
         {
             var dir = Path.Combine(instance.Dir, ".kiln");
             try { Directory.CreateDirectory(dir); } catch { }
@@ -352,6 +357,13 @@ public static class Launcher
         }
         return args;
     }
+
+    // JDK 21 dynamic dumping treats encoded module-location URI paths (such as %20) as filenames.
+    // The default base archive remains available; this guard prevents VM exit before the game main class.
+    internal static bool DynamicCdsSupported(int javaMajor, IEnumerable<string> arguments, string classpath) =>
+        !(OperatingSystem.IsWindows() && javaMajor == 21 &&
+          arguments.Any(a => a is "-p" or "--module-path" || a.StartsWith("--module-path=", StringComparison.Ordinal)) &&
+          classpath.Any(c => c == ' ' || c == '%' || c > 127));
 
     public static List<string> BuildArguments(McInstance instance, JavaInfo java, LoginResult login,
         IReadOnlyList<McLibrary> libs, RuleContext ctx, LaunchOptions options)
@@ -516,20 +528,20 @@ public static class Launcher
     // MARK: 运行
 
     public static GameProcess Run(McInstance instance, JavaInfo java, IReadOnlyList<string> args, LoginResult login,
-        LaunchCallbacks callbacks)
+        LaunchCallbacks callbacks, string? workingDirectory = null)
     {
-        var game = GameProcessFactory(instance, java, args, login, callbacks);
+        var game = GameProcessFactory(instance, java, args, login, callbacks, workingDirectory);
         return game;
     }
 
     private static GameProcess GameProcessFactory(McInstance instance, JavaInfo java, IReadOnlyList<string> args,
-        LoginResult login, LaunchCallbacks callbacks)
+        LoginResult login, LaunchCallbacks callbacks, string? workingDirectory)
     {
         var game = new GameProcess(instance.Name) { Instance = instance, Java = java, Secret = login.UserType == "legacy" ? null : login.AccessToken };
         var info = new ProcessStartInfo
         {
             FileName = java.Path,
-            WorkingDirectory = instance.GameDir,
+            WorkingDirectory = workingDirectory ?? instance.GameDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

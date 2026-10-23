@@ -109,7 +109,7 @@ internal static class GameSmoke
             Check("Owned Minecraft window accepts a normal close request", game.Process.CloseMainWindow());
             await exited.Task.WaitAsync(TimeSpan.FromSeconds(settings.ClassDataSharing ? 300 : 30));
             Check("Game exits normally without force termination", !game.Killed && game.ExitCode == 0 && game.State == GameProcess.GameState.Exited);
-            if (settings.ClassDataSharing && game.Java?.HasBaseCDS == true && game.Java.Major is >= 19 and < 25)
+            if (game.CommandLine?.Contains("-XX:+AutoCreateSharedArchive", StringComparison.Ordinal) == true)
                 Check("Windows dynamic CDS archive is created on normal exit", Directory.EnumerateFiles(Path.Combine(instance.Dir, ".kiln"), "cds-*.jsa").Any());
             await Task.Delay(100);
             Check("Launch timestamps and play time are saved inside the fixture", instance.Setup.LastPlayed != null && instance.Setup.PlayTime > 0);

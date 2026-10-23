@@ -28,6 +28,12 @@ public sealed class HomePage : Page
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly DispatcherTimer _nameTimer = new() { Interval = TimeSpan.FromMilliseconds(1600) };
     private readonly StackPanel _running = new() { Spacing = 6 };
+    private readonly Button _runningButton = Ui.Button("", (_, _) => { });
+    private readonly Button _dismissRuns = Ui.Button("×", (_, _) => { });
+    private static readonly HashSet<Guid> DismissedGames = new();
+    private readonly HashSet<Guid> _dismissed;
+    private readonly IReadOnlyList<GameProcess>? _gameFixtures;
+    private KilnDialog? _runningDialog;
     private List<McInstance> _instances = new();
     private McInstance? _selected;
     private bool _loaded;
@@ -35,8 +41,10 @@ public sealed class HomePage : Page
     private static PlayerLook? _author;
     private int _castRevision;
 
-    public HomePage()
+    public HomePage() : this(null, DismissedGames) { }
+    internal HomePage(IReadOnlyList<GameProcess>? games, HashSet<Guid>? dismissed = null)
     {
+        _gameFixtures = games; _dismissed = dismissed ?? new();
         BuildUi();
         _scene.CaptionLuminanceChanged += luminance => { if (_loaded) MainWindow.Current!.SetCaptionBackdrop(luminance); };
         _timer.Tick += (_, _) => UpdateProgress();
@@ -44,8 +52,10 @@ public sealed class HomePage : Page
         Loaded += async (_, _) =>
         {
             _loaded = true;
+            if (_gameFixtures != null) { UpdateProgress(); _timer.Start(); return; }
             MainWindow.Current!.AccountsUpdated += UpdateInfo;
             Reload();
+            UpdateProgress();
             await BlockTextures.Shared.Load(InstanceScanner.Scan(LauncherSettings.Shared.MinecraftFolder));
             _timer.Start();
             await LoadNotes();
@@ -73,9 +83,8 @@ public sealed class HomePage : Page
     {
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 180 });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto, MinHeight = 238 });
-        var hero = new Grid { Background = Solid(0x2B2219) };
+        var hero = new Grid { Name = "HomePixelRegion", Background = Solid(0x2B2219) };
         hero.Children.Add(_scene);
         var shade = new Border
         {
@@ -130,11 +139,28 @@ public sealed class HomePage : Page
         _accountButton.VerticalAlignment = VerticalAlignment.Top;
         hero.Children.Add(_accountButton);
         root.Children.Add(hero);
-        _running.Margin = new Thickness(28, 8, 28, 0); Grid.SetRow(_running, 1); root.Children.Add(_running);
+        _runningButton.Name = "HomeRunningRecords";
+        _runningButton.Visibility = _dismissRuns.Visibility = Visibility.Collapsed;
+        _runningButton.Click += async (_, _) =>
+        {
+            if (_runningDialog != null || KilnDialog.IsOpen) return;
+            _runningDialog = new KilnDialog { XamlRoot = XamlRoot, Title = Localization.T("运行记录", "Game sessions"), Content = _running, CloseButtonText = Localization.T("关闭", "Close") };
+            try { await _runningDialog.ShowAsync(); } finally { _runningDialog = null; }
+        };
+        _dismissRuns.Name = "DismissHomeSessions"; _dismissRuns.Width = 28; _dismissRuns.MinWidth = 0; _dismissRuns.Padding = new Thickness(0);
+        ToolTipService.SetToolTip(_dismissRuns, Localization.T("隐藏运行记录（不结束游戏）", "Hide sessions (keep games running)"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_dismissRuns, Localization.T("隐藏运行记录", "Hide game sessions"));
+        _dismissRuns.Click += (_, _) => { foreach (var game in SessionGames) _dismissed.Add(game.Id); UpdateProgress(); };
         for (var i = 0; i < 4; i++) _notes.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var noteHeader = Ui.Row(Ui.Text(Localization.T("Minecraft 更新", "Minecraft updates"), 13, FontWeights.SemiBold), _notesStatus);
+        var noteHeader = new Grid { Height = 28, ColumnSpacing = 12 };
+        noteHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        noteHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var noteTitle = Ui.Row(Ui.Text(Localization.T("Minecraft 更新", "Minecraft updates"), 13, FontWeights.SemiBold), _notesStatus); noteTitle.VerticalAlignment = VerticalAlignment.Center;
+        noteHeader.Children.Add(noteTitle);
+        var sessionActions = Ui.Row(_runningButton, _dismissRuns); sessionActions.Spacing = 6;
+        Grid.SetColumn(sessionActions, 1); noteHeader.Children.Add(sessionActions);
         var notePanel = Ui.Col(noteHeader, _notes); notePanel.Spacing = 12; notePanel.Margin = new Thickness(28, 18, 28, 24);
-        Grid.SetRow(notePanel, 2); root.Children.Add(notePanel);
+        Grid.SetRow(notePanel, 1); root.Children.Add(notePanel);
         for (var i = 0; i < 9; i++)
         {
             var index = i;
@@ -265,6 +291,8 @@ public sealed class HomePage : Page
         catch { if (_loaded) _notesStatus.Text = Localization.T("无法加载更新日志，请检查网络。", "Couldn't load the update notes. Check your connection."); }
     }
 
+    private IEnumerable<GameProcess> SessionGames => _gameFixtures ?? (IEnumerable<GameProcess>)MainWindow.Games;
+    internal void RefreshRunningGames() => UpdateProgress();
     private void UpdateProgress()
     {
         var job = _launchJob;
@@ -273,8 +301,12 @@ public sealed class HomePage : Page
         _playLabel.FontSize = job == null ? 19 : 14;
         _playStatus.Text = job == null ? "" : job.Speed > 0 ? Job.FormatSpeed(job.Speed) : $"{job.Fraction:P0}";
         _playStatus.Visibility = job == null ? Visibility.Collapsed : Visibility.Visible;
-        var games = MainWindow.Games.Take(3).ToList();
-        var signature = string.Join("|", games.Select(g => $"{g.Id}:{g.State}:{g.ExitCode}"));
+        var visible = SessionGames.Where(g => !_dismissed.Contains(g.Id)).ToList();
+        _runningButton.Content = Localization.T($"运行记录 · {visible.Count}", $"Sessions · {visible.Count}");
+        _runningButton.Visibility = _dismissRuns.Visibility = visible.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (visible.Count == 0) _runningDialog?.Hide();
+        var games = visible.Take(3).ToList();
+        var signature = visible.Count + ":" + string.Join("|", games.Select(g => $"{g.Id}:{g.State}:{g.ExitCode}"));
         if (_running.Tag is string old && old == signature) return;
         _running.Tag = signature; _running.Children.Clear();
         foreach (var game in games)
@@ -282,9 +314,16 @@ public sealed class HomePage : Page
             var log = Ui.Button(Localization.T("查看日志", "View log"), (_, _) => MainWindow.Current!.ShowGameLog(game));
             var stop = Ui.Button(Localization.T("结束", "Stop"), (_, _) => game.Kill());
             var status = game.State switch { GameProcess.GameState.Starting => Localization.T("正在等待游戏窗口", "Waiting for game window"), GameProcess.GameState.Running => Localization.T("运行中", "Running"), GameProcess.GameState.Exited => Localization.T("已退出", "Exited"), _ => Localization.T($"崩溃了，退出码 {game.ExitCode ?? -1}", $"Crashed, exit code {game.ExitCode ?? -1}") };
-            var label = Ui.Row(Ui.Text(game.InstanceName, 12.5, FontWeights.Medium), Ui.Text(status, 12));
+            var name = Ui.Text(game.InstanceName, 12.5, FontWeights.Medium); name.MaxLines = 1; name.TextTrimming = TextTrimming.CharacterEllipsis;
+            var state = Ui.Text(status, 12); state.MaxLines = 1; state.TextTrimming = TextTrimming.CharacterEllipsis;
+            var label = Ui.Col(name, state); label.Spacing = 2;
             var running = game.State is GameProcess.GameState.Starting or GameProcess.GameState.Running;
-            _running.Children.Add(Ui.RecordRow(label, running ? new[] { log, stop } : new[] { log }));
+            var close = Ui.Button("×", (_, _) => { _dismissed.Add(game.Id); UpdateProgress(); }); close.Name = "DismissGame_" + game.Id.ToString("N");
+            ToolTipService.SetToolTip(close, Localization.T("隐藏这条记录（不结束游戏）", "Hide this session (keep game running)"));
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(close, Localization.T($"隐藏 {game.InstanceName} 的运行记录", $"Hide session for {game.InstanceName}"));
+            var row = Ui.RecordRow(label, running ? new[] { log, stop, close } : new[] { log, close });
+            close.Width = 28; close.Padding = new Thickness(0);
+            _running.Children.Add(row);
         }
     }
 

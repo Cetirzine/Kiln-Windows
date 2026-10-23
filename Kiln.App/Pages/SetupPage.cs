@@ -62,7 +62,7 @@ public sealed class SetupPage : Page
         var choices = Ui.Segmented(gc, null); choices.Width = 320; choices.Name = "GarbageCollectorChoice";
         return Ui.Scroll(Ui.Card(T("Java 虚拟机", "Java virtual machine"),
             Ui.Setting(T("垃圾回收器", "Garbage collector"), choices, T("G1 适合大多数情况；分代 ZGC 停顿更短，但占用更多内存（需要 Java 21+）。", "G1 suits most setups; generational ZGC has shorter pauses but uses more memory (Java 21+).")),
-            Ui.Setting(T("类数据共享（CDS）", "Class data sharing (CDS)"), Ui.Toggle(_s.ClassDataSharing, "", "", v => _s.ClassDataSharing = v), T("Java 19+ 会为每个版本生成类缓存，之后启动更快。", "With Java 19+, a per-instance class archive is created so later launches start faster.")),
+            Ui.Setting(T("类数据共享（CDS）", "Class data sharing (CDS)"), Ui.Toggle(_s.ClassDataSharing, "", "", v => _s.ClassDataSharing = v), T("Java 19+ 可为兼容的版本生成类缓存，之后启动更快。", "With Java 19+, compatible instances can create a class archive so later launches start faster.")),
             Ui.Setting(T("紧凑对象头", "Compact object headers"), Ui.Toggle(_s.CompactHeaders, "", "", v => _s.CompactHeaders = v), T("Java 24+ 可减少堆内存占用。", "With Java 24+, reduces heap usage."))),
             Ui.Card(T("启动速度", "Launch speed"), Ui.Setting(T("快速校验", "Fast verification"), Ui.Toggle(_s.FastVerify, "", "", v => _s.FastVerify = v), T("文件未被修改时跳过 SHA-1 校验。", "Skip SHA-1 checks for files that haven't changed."))));
     }

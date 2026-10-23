@@ -23,11 +23,15 @@
 - App 和 SelfTest 构建均无警告/错误；当前 App 的 149 项原生 UI 回归全部通过，未处理 UI 异常为零。报告：`artifacts/ui-java-window-preview.json`。
 - 安装处理器修改在独立输出目录构建后，169 项核心回归通过；新增真实子进程检查双管道背压、空参数/引号/尾部反斜杠、工作目录、非零退出输出，以及取消后进程确已退出。报告：`artifacts/parity-forge-processor-preview.txt`。App 随后重新构建并通过全部 149 项 UI 检查（`artifacts/ui-forge-processor-preview.json`），未处理异常为零。加载器矩阵使用的是前一提交的安装处理器，不能把其结果当作新处理器修改的端到端验证。
 
-## Forge 特殊路径失败尚未解决
+## Forge 特殊路径：历史失败与 2026-10-23 修复
 
 Forge 1.21.1-52.1.20 的真实安装处理器全部运行完成，但游戏在创建窗口前退出（返回值 1），因此不能标记 Forge 通过。栈为 `ZipFileSystemProvider.uriToPath → Path.of → ModuleJarMetadata`，输入 URI 中游戏目录的方括号未转义，报 `Illegal character in path`。客户端和 `securemodules-2.2.24.jar` 的 SHA-1 均与官方元数据一致；没有为通过测试而改用不含特殊字符的目录。
 
 Forge 官方曾记录并修复相关 [ZipPath 方括号问题 #10755](https://github.com/MinecraftForge/MinecraftForge/issues/10755)，但本次所用的官方 2.2.24 仍在上述模块元数据路径触发异常，需要继续定位兼容方案。当前卷的 `GetShortPathName` 返回原路径，不能依赖 8.3 短路径处理。报告：`Forge-report.json`，原始日志 `Logs/Launch-20261021-122247-82b850c4bf354c41a11fedf31e7e3c5d.log`。NeoForge 尚未开始，矩阵遇到失败已终止。
+
+2026-10-23 追加：官方 Maven 最新仍为 2.2.24。以相同 JAR 做 Java ZipFileSystem URI 往返对照，确认通过目录联接可正常访问同一文件。现为受影响 Forge/NeoForge 启动参数创建位于 `Paths.Support/PathAliases` 的稳定联接，保留原设置、实例身份、文件和进程跟踪；不改第三方 JAR，也不移动存档。检查并拒绝覆盖指向其他目标的已有项。特殊字符实例名称也映射其目录及原生库目录，基础验证覆盖联接读写同一文件、边界匹配、稳定复用及删除联接后原数据保留。Forge 52.1.20 实际运行的十项检查全部通过，报告：`Forge-alias-success.json`；旧失败报告另存为 `Forge-before-alias.json`。
+
+NeoForge 随后完成真实安装及六个处理器，但 Java 21 动态 CDS 将模块 URI 中的 `%20` 当作文件路径，`os::stat error 3` 导致 VM 在 main 前退出。现对 Java 21 + 模块路径 + 需 URI 编码的 classpath 组合跳过动态归档生成，默认基础归档仍正常启用，其他组合继续使用动态缓存。相同目录及相同设置下复测，真实窗口、纹理图集、窗口通知、正常退出与游玩记录九项检查全部通过，报告：`NeoForge-report.json`，之前的失败另存 `NeoForge-before-cds-guard.json`。当前核心回归共 179 项通过。
 
 ## CDS 首次启动性能仍需处理
 
